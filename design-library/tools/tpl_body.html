@@ -1,0 +1,344 @@
+
+<div class="wrap">
+  <header class="top">
+    <div>
+      <h1>Standard Design Selector</h1>
+      <div class="sub">Singapore standard designs: pick an approved design, build the tender pack, send the details to AutoCAD.</div>
+    </div>
+    <span class="proto">Prototype · example data</span>
+  </header>
+
+  <nav class="tabs" role="tablist">
+    <button role="tab" id="tab-sel" aria-selected="true" data-view="sel">Selector</button>
+    <button role="tab" id="tab-tp" aria-selected="false" data-view="tp">Tender Pack<span class="count" id="tpCount">0</span></button>
+    <button role="tab" id="tab-cov" aria-selected="false" data-view="cov">Coverage</button>
+  </nav>
+
+  <section id="view-sel">
+    <div class="layout">
+      <aside class="rail" aria-label="Requirement">
+        <div><span class="lbl">Structure</span><div class="seg" id="famSeg"></div></div>
+        <div class="fields" id="fields"></div>
+        <p class="hint">Shows the smallest <b>approved</b> design that meets or exceeds the requirement and passes the Singapore checks. Designs awaiting approval, and designs that fail a check, are listed separately.</p>
+      </aside>
+      <div><div id="verdict"></div><div class="results" id="results"></div></div>
+    </div>
+  </section>
+
+  <section id="view-tp" hidden>
+    <div class="panel">
+      <div class="tp-head">
+        <div class="grow"><label class="lbl" for="tpName">Tender / project</label><input type="text" id="tpName"></div>
+        <div style="flex:0 1 180px"><label class="lbl" for="tpPrefix">Drawing no. prefix</label><input type="text" id="tpPrefix" value="T2026-01-STD"></div>
+        <div class="actions">
+          <button class="btn" id="copyCad">Copy CAD export</button>
+          <button class="btn ghost" id="copyTable">Copy schedule for Excel</button>
+          <button class="btn ghost" id="copyFiles">Copy file list</button>
+          <button class="btn ghost" id="clearTp">Clear</button>
+        </div>
+      </div>
+      <div class="scroll" id="tpTable"></div>
+      <p class="note"><b>Copy CAD export</b> gives the same text as the CAD_Export sheet: paste it into Notepad, save as .txt, then run TPSHEETS in AutoCAD. Only Approved designs are placed. Quantities are preliminary for tender estimation; QS to verify.</p>
+    </div>
+  </section>
+
+  <section id="view-cov" hidden><div class="cov" id="cov"></div></section>
+</div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script>
+const DATA = /*DATA*/;
+const SG = DATA.criteria;
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const num = v => (v === null || v === "" || v === undefined) ? null : +v;
+
+/* ---------- families: how each register is searched (same rules as Design_Selector) ---------- */
+const uniq = (sheet, col) => [...new Set(DATA.reg[sheet].map(r => r[col]).filter(Boolean))];
+const NONHYD = ["Sump","Drop Inlet Chamber","Silt Trap","Pipe Culvert","Subsoil Drain"];
+function capacity(r, S){
+  if (NONHYD.includes(r["Drain Type"])) return null;
+  const W = r["Internal Width (mm)"]/1000, y = r["Internal Depth / Clear Height (mm)"]/1000*(1-SG.fb), A = W*y, R = A/(W+2*y);
+  const cells = Math.max(1, +r["No. of Cells"] || 1), Q = cells*(1/SG.n)*A*Math.pow(R, 2/3)*Math.sqrt(1/S);
+  return {Q, V: Q/(cells*A)};
+}
+const FAM = {
+  drain: {label:"Drain", sheet:"Drain_Register",
+    fields:[["type","Drain type","sel",()=>uniq("Drain_Register","Drain Type"),"Precast U-Drain"],["w","Min. width (mm)","num",null,600],["d","Min. depth (mm)","num",null,600],
+            ["load","Loading","sel",()=>uniq("Drain_Register","Loading"),"Drain surcharge 12 kPa (SDRE)"],["q","Design flow Q (m³/s), 0 = ignore","num",null,0.35],["s","Gradient 1 : S","num",null,500]],
+    match:(r,v)=>{ if (r["Drain Type"]!==v.type||r.Loading!==v.load||r["Internal Width (mm)"]<v.w||r["Internal Depth / Clear Height (mm)"]<v.d) return false;
+      if (v.q>0){ const c=capacity(r,v.s||500); if(!c||c.Q<v.q) return false; } return true; },
+    sort:(a,b)=>a["Internal Width (mm)"]-b["Internal Width (mm)"]||a["Internal Depth / Clear Height (mm)"]-b["Internal Depth / Clear Height (mm)"],
+    exact:(r,v)=>r["Internal Width (mm)"]===v.w&&r["Internal Depth / Clear Height (mm)"]===v.d,
+    req:v=>`${v.type} ≥ ${v.w} × ${v.d} mm, ${v.load}${v.q>0?`, Q ≥ ${v.q} m³/s at 1:${v.s}`:""}`,
+    specs:["Category","Open / Covered","Wall Thk (mm)","Base Thk (mm)","Top Slab Thk (mm)","Wall Main Bar","Base Main Bar","Top Slab Bar","Concrete Grade","Cover (mm)","Fill over Top / Surcharge"],
+    extra:(r,v)=>{const c=capacity(r,v.s||500); if(!c) return []; const vc=c.V>SG.vmax?"NOTE":c.V<SG.vmin?"NOTE":"OK";
+      return [[vc,`Capacity ${c.Q.toFixed(3)} m³/s, V ${c.V.toFixed(2)} m/s at 1:${v.s||500}`]];}},
+  rw: {label:"RC wall", sheet:"RW_Register",
+    fields:[["type","Wall type","sel",()=>uniq("RW_Register","Wall Type"),"Cantilever RC (toe & heel)"],["h","Retained height (m)","num",null,2.8],["q","Surcharge (kPa)","num",null,25],["g","Groundwater behind wall","yn",null,"N"]],
+    match:(r,v)=>r["Wall Type"]===v.type&&r["Retained Height (m)"]>=v.h&&r["Surcharge (kPa)"]>=v.q&&(v.g==="N"||r["GWT Behind Wall (Y/N)"]==="Y"),
+    sort:(a,b)=>a["Retained Height (m)"]-b["Retained Height (m)"]||a["Surcharge (kPa)"]-b["Surcharge (kPa)"]||(a["GWT Behind Wall (Y/N)"]==="N"?-1:1),
+    exact:(r,v)=>r["Retained Height (m)"]===v.h&&r["Surcharge (kPa)"]===v.q&&r["GWT Behind Wall (Y/N)"]===v.g,
+    req:v=>`${v.type}, H ≥ ${v.h} m, q ≥ ${v.q} kPa${v.g==="Y"?", with GWT":""}`,
+    specs:["Founding Soil","Stem Top Thk (mm)","Stem Bottom Thk (mm)","Base Width (mm)","Toe (mm)","Heel (mm)","Base Thk (mm)","Stem Main Bar","Base Main Bar","FOS Sliding","FOS Overturning","Max Bearing (kPa)"]},
+  emb: {label:"Embedded wall", sheet:"Embedded_Wall_Register",
+    fields:[["type","Wall type","sel",()=>uniq("Embedded_Wall_Register","Wall Type"),"Contiguous Bored Pile (CBP)"],["d","Excavation depth (m)","num",null,4.5],
+            ["sup","Support system","sel",()=>uniq("Embedded_Wall_Register","Support System"),"1 level strut"],["soil","Soil profile","sel",()=>uniq("Embedded_Wall_Register","Soil Profile"),"Old Alluvium"],
+            ["tp","Temporary / permanent","sel",()=>["Permanent","Temporary"],"Permanent"]],
+    match:(r,v)=>r["Wall Type"]===v.type&&r["Support System"]===v.sup&&r["Soil Profile"]===v.soil&&r["Temporary / Permanent"]===v.tp&&r["Excavation Depth (m)"]>=v.d,
+    sort:(a,b)=>a["Excavation Depth (m)"]-b["Excavation Depth (m)"], exact:(r,v)=>r["Excavation Depth (m)"]===v.d,
+    req:v=>`${v.tp} ${v.type}, ≥ ${v.d} m, ${v.sup}, ${v.soil}`,
+    specs:["Pile Dia / Section","Spacing / Overlap (mm)","Pile / Wall Length (m)","Toe Embedment (m)","Main Bar / Cage","Capping Beam (W x D mm)","Waler Section","Strut Section & Spacing","Max Wall Deflection (mm)","Allowable Deflection (mm)","GWT (m below ground)","Instrumentation"]},
+  mh: {label:"Manhole", sheet:"Manhole_Register",
+    fields:[["type","Manhole type","sel",()=>uniq("Manhole_Register","Manhole Type"),"Standard Manhole (PUB 001C)"],["d","Depth to invert (m)","num",null,4.2],["p","Largest incoming pipe (mm)","num",null,450]],
+    match:(r,v)=>r["Manhole Type"]===v.type&&r["Max Depth (m)"]>=v.d&&r["Min Depth (m)"]<=v.d&&r["Max Incoming Pipe Dia (mm)"]>=v.p,
+    sort:(a,b)=>a["Max Depth (m)"]-b["Max Depth (m)"]||a["Internal Length / Dia (mm)"]-b["Internal Length / Dia (mm)"], exact:()=>true,
+    req:v=>`${v.type}, invert at ${v.d} m, pipe up to ${v.p} dia`,
+    specs:["Construction","Shape","Min Depth (m)","Max Depth (m)","Max Incoming Pipe Dia (mm)","Wall Thk (mm)","Base Thk (mm)","Roof Slab Thk (mm)","Wall Bar","Base Bar","Uplift FOS","PUB Std Drawing Ref","Typical Temporary ERSS (Design ID)"]},
+  pit: {label:"ERSS pit", sheet:"ERSS_Pit_Register",
+    fields:[["type","ERSS type","sel",()=>["All",...uniq("ERSS_Pit_Register","ERSS Type")],"All"],["pur","Purpose","sel",()=>["All",...uniq("ERSS_Pit_Register","Purpose")],"Manhole"],
+            ["d","Excavation depth (m)","num",null,5],["soil","Soil profile","sel",()=>["All",...uniq("ERSS_Pit_Register","Soil Profile")],"All"]],
+    match:(r,v)=>(v.type==="All"||r["ERSS Type"]===v.type)&&(v.pur==="All"||r.Purpose===v.pur)&&(v.soil==="All"||r["Soil Profile"]===v.soil)&&r["Excavation Depth (m)"]>=v.d,
+    sort:(a,b)=>a["Excavation Depth (m)"]-b["Excavation Depth (m)"]||a["Pit Plan Length (mm)"]-b["Pit Plan Length (mm)"], exact:(r,v)=>r["Excavation Depth (m)"]===v.d,
+    req:v=>`${v.type==="All"?"Any ERSS":v.type} for ${v.pur==="All"?"any purpose":v.pur}, ≥ ${v.d} m`,
+    specs:["Soil Profile","Sheet Pile / Wall Section","Pile Length (m)","Toe Embedment (m)","Strut Levels","Waler Section","Strut / Corner Brace","Base Stability FOS","Dewatering / Grouting","GWT (m below ground)"]},
+  lkw: {label:"Linkway", sheet:"Linkway_Register",
+    fields:[["type","Linkway type","sel",()=>uniq("Linkway_Register","Linkway Type"),"Low Covered Linkway"],["w","Min. roof width (m)","num",null,3.6],["h","Min. headroom (m)","num",null,2.4]],
+    match:(r,v)=>r["Linkway Type"]===v.type&&r["Roof Width, eave to eave (m)"]>=v.w&&r["Clear Headroom (m)"]>=v.h,
+    sort:(a,b)=>a["Roof Width, eave to eave (m)"]-b["Roof Width, eave to eave (m)"], exact:(r,v)=>r["Roof Width, eave to eave (m)"]===v.w,
+    req:v=>`${v.type}, width ≥ ${v.w} m, headroom ≥ ${v.h} m`,
+    specs:["SDRE Drawing Ref","Bay / Column Spacing (m)","Column Arrangement","Column Section","Roof Material","Footing Type","Footing Size (L x B x D mm)","RC Stump (dia x H mm)","Basic Wind Speed (m/s)","Roof Fixing Pull-out (kN)","Concrete Grade"]},
+  other: {label:"Others", sheet:"Other_Register", list:true,
+    fields:[["fam","Family","sel",()=>["All",...uniq("Other_Register","Family")],"All"],["s","Search","text",null,""]],
+    match:(r,v)=>(v.fam==="All"||r.Family===v.fam)&&(!v.s||JSON.stringify(r).toLowerCase().includes(v.s.toLowerCase())),
+    sort:()=>0, exact:()=>true, req:v=>v.fam==="All"?"All other structures":v.fam,
+    specs:["Design Load","Foundation","Material","Key Members / Reinforcement"]}
+};
+Object.entries(FAM).forEach(([k,f])=>DATA.reg[f.sheet].forEach(r=>{r._fam=k;}));
+const ALL = Object.values(FAM).flatMap(f=>DATA.reg[f.sheet]);
+const byId = Object.fromEntries(ALL.map(r=>[r["Design ID"], r]));
+
+/* ---------- drawings, to scale where the data allows ---------- */
+const NS = 'vector-effect="non-scaling-stroke"';
+function svg(minx,miny,w,h,inner,label){const p=Math.max(w,h)*.08;
+  return `<svg viewBox="${minx-p} ${miny-p} ${w+2*p} ${h+2*p}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="${label}">${inner}</svg>`;}
+const ground=(x1,x2,y=0)=>`<line x1="${x1}" y1="${y}" x2="${x2}" y2="${y}" stroke="var(--hatch)" stroke-width="1.5" ${NS} stroke-dasharray="4 3"/>`;
+const conc=d=>`<path fill-rule="evenodd" fill="var(--concrete)" stroke="var(--ink)" stroke-width="1.5" ${NS} d="${d}"/>`;
+function drawDrain(r){
+  const t=+r["Wall Thk (mm)"]||150,b=+r["Base Thk (mm)"]||150,ts=+r["Top Slab Thk (mm)"]||0,W=r["Internal Width (mm)"],D=r["Internal Depth / Clear Height (mm)"],n=Math.max(1,+r["No. of Cells"]||1);
+  const ow=n*W+(n+1)*t, oh=ts+D+b; let holes="", water="";
+  for(let k=0;k<n;k++){const x=t+k*(W+t); holes+=` M${x} ${ts}H${x+W}V${ts+D}H${x}Z`; water+=`<rect x="${x}" y="${ts+D*.6}" width="${W}" height="${D*.4}" fill="var(--accent)" opacity=".18"/>`;}
+  return svg(-ow*.2,-oh*.04,ow*1.4,oh*1.08,ground(-ow*.2,ow*1.2)+water+conc(`M0 0H${ow}V${oh}H0Z${holes}`),"Drain section");
+}
+function drawRW(r){
+  const H=r["Retained Height (m)"]*1000,B=+r["Base Width (mm)"],bt=+r["Base Thk (mm)"]||0,toe=+r["Toe (mm)"]||0,stb=+r["Stem Bottom Thk (mm)"],stt=+r["Stem Top Thk (mm)"];
+  let shape,soilX;
+  if((r["Wall Type"]||"").startsWith("Gravity")){shape=`M0 ${H}H${stb}L${stb} 0H${stb-stt}Z`;soilX=stb;}
+  else{const ex=toe+stb; shape=`M0 ${H}H${B}V${H+bt}H0Z M${toe} ${H}L${ex-stt} 0H${ex}V${H}Z`; soilX=ex;}
+  const right=Math.max(B,soilX)+H*.3;
+  const soil=`<path d="M${soilX} 0H${right}V${H}H${soilX}Z" fill="var(--soil)" opacity=".7"/>`;
+  const gw=r["GWT Behind Wall (Y/N)"]==="Y"?`<line x1="${soilX}" y1="${H*.5}" x2="${right}" y2="${H*.5}" stroke="var(--accent)" stroke-width="1.5" ${NS}/>`:"";
+  return svg(-H*.05,0,right+H*.05,H+bt,soil+gw+conc(shape),"Wall section");
+}
+function drawEmb(r){
+  const D=r["Excavation Depth (m)"],Lw=+r["Pile / Wall Length (m)"]||D*2,w=Math.max(.4,(parseFloat(r["Pile Dia / Section"])||600)/1000);
+  const lv=parseInt((r["Support System"]||"").match(/\d/)?.[0]||"0");
+  let st=""; for(let k=1;k<=lv;k++){const y=D*k/(lv+1)*.9; st+=`<line x1="${-D*.9}" y1="${y}" x2="0" y2="${y}" stroke="var(--ink)" stroke-width="2.5" ${NS}/>`;}
+  const soil=`<path d="M${w} 0H${w+D}V${Lw}H${-D}V${D}H${w}Z" fill="var(--soil)" opacity=".7"/>`;
+  const steel=r["Wall Type"]==="Steel Sheet Pile";
+  const wall=`<rect x="0" y="0" width="${steel?w/3:w}" height="${Lw}" fill="${steel?"var(--ink)":"var(--concrete)"}" stroke="var(--ink)" stroke-width="1.5" ${NS}/>`;
+  return svg(-D,-.2,D*2+w,Lw+.2,soil+ground(-D,0,D)+ground(w,w+D)+st+wall,"Embedded wall section");
+}
+function drawMH(r){
+  const L=r["Internal Length / Dia (mm)"],D=r["Max Depth (m)"]*1000,t=+r["Wall Thk (mm)"]||200,b=+r["Base Thk (mm)"]||250,rt=+r["Roof Slab Thk (mm)"]||200;
+  const ow=L+2*t, top=Math.max(0,D-1500), oh=D+b;
+  const shaft=`M${ow/2-450} 0H${ow/2+450}V${top}H${ow/2-450}Z`;
+  const body=conc(`M0 ${top}H${ow}V${oh}H0Z M${t} ${top+rt}H${t+L}V${D}H${t}Z`)+`<path d="${shaft}" fill="none" stroke="var(--ink)" stroke-width="1.5" ${NS} stroke-dasharray="5 3"/>`;
+  const p=(r["Max Incoming Pipe Dia (mm)"]||300);
+  const pipe=`<circle cx="${-p/2}" cy="${D-p/2}" r="${p/2}" fill="none" stroke="var(--accent)" stroke-width="2" ${NS}/>`;
+  return svg(-p-200,0,ow+p+400,oh,ground(-p-200,ow+200)+body+pipe,"Manhole section");
+}
+function drawPit(r){
+  const L=r["Pit Plan Length (mm)"],W=r["Pit Plan Width (mm)"],c=Math.min(L,W)*.3;
+  const br=`<path d="M0 ${c}L${c} 0 M${L-c} 0L${L} ${c} M${L} ${W-c}L${L-c} ${W} M${c} ${W}L0 ${W-c}" stroke="var(--ink)" stroke-width="2" ${NS} fill="none"/>`;
+  return svg(0,0,L,W,`<rect x="0" y="0" width="${L}" height="${W}" fill="var(--paper)" stroke="var(--ink)" stroke-width="3" ${NS}/>`+(r["Strut Levels"]>0?br:""),"ERSS pit plan");
+}
+function drawLkw(r){
+  const W=r["Roof Width, eave to eave (m)"],H=r["Clear Headroom (m)"],arr=r["Column Arrangement"]||"";
+  const xs=arr.startsWith("Double")?[W*.15,W*.85]:arr.includes("side")?[W*.1]:[W/2];
+  const roof=`<path d="M0 ${-H}Q${W/2} ${-H-W*.18} ${W} ${-H}" fill="none" stroke="var(--ink)" stroke-width="3" ${NS}/>`;
+  const cols=xs.map(x=>`<line x1="${x}" y1="0" x2="${x}" y2="${-H}" stroke="var(--ink)" stroke-width="2.5" ${NS}/><rect x="${x-.25}" y="0" width=".5" height=".35" fill="var(--concrete)" stroke="var(--ink)" stroke-width="1" ${NS}/>`).join("");
+  return svg(-.3,-H-W*.2,W+.6,H+W*.2+.4,ground(-.3,W+.3)+roof+cols,"Linkway section");
+}
+function drawOther(r){
+  const s=`stroke="var(--ink)" stroke-width="2" fill="none" ${NS}`;
+  const g={Railing:`<path ${s} d="M5 20H95 M5 38H95 M15 20V58 M50 20V58 M85 20V58 M5 58H95"/>`,
+    Staircase:`<path ${s} d="M10 58H25V48H38V38H51V28H64V18H77V8H92"/><path ${s} d="M10 58L92 14"/>`,
+    POB:`<path ${s} d="M5 20H95 M5 40H95 M5 40L15 20L25 40L35 20L45 40L55 20L65 40L75 20L85 40L95 20 M10 40V58 M90 40V58"/>`}[r.Family]||`<rect x="20" y="15" width="60" height="40" ${s}/>`;
+  return `<svg viewBox="0 0 100 64" role="img" aria-label="${esc(r.Family)}">${g}</svg>`;
+}
+const DRAW={drain:drawDrain,rw:drawRW,emb:drawEmb,mh:drawMH,pit:drawPit,lkw:drawLkw,other:drawOther};
+const CAP={drain:r=>`${r["Internal Width (mm)"]} × ${r["Internal Depth / Clear Height (mm)"]} internal`,rw:r=>`H ${(+r["Retained Height (m)"]).toFixed(1)} m · B ${r["Base Width (mm)"]} mm`,
+  emb:r=>`excavation ${r["Excavation Depth (m)"]} m · L ${r["Pile / Wall Length (m)"]} m`,mh:r=>`${r["Internal Length / Dia (mm)"]}${r["Internal Width (mm)"]?" × "+r["Internal Width (mm)"]:" dia"} · ${r["Min Depth (m)"]}–${r["Max Depth (m)"]} m`,
+  pit:r=>`plan ${r["Pit Plan Length (mm)"]} × ${r["Pit Plan Width (mm)"]} · ${r["Excavation Depth (m)"]} m deep`,lkw:r=>`${r["Roof Width, eave to eave (m)"]} m wide · ${r["Clear Headroom (m)"]} m headroom`,other:r=>r["Type (short)"]};
+
+/* ---------- state ---------- */
+const store={get(k,d){try{const v=localStorage.getItem(k);return v?JSON.parse(v):d}catch(e){return d}},set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}};
+let fam=store.get("sd-fam","drain"); if(!FAM[fam]) fam="drain";
+let pack=store.get("sd-pack",null)||DATA.tender.items.map(x=>({...x}));
+$("#tpName").value=store.get("sd-name",DATA.tender.name);
+const vals={}; Object.entries(FAM).forEach(([k,f])=>{vals[k]={};f.fields.forEach(([key,,,,def])=>vals[k][key]=def);});
+const savePack=()=>{store.set("sd-pack",pack);$("#tpCount").textContent=pack.length;};
+
+$("#famSeg").innerHTML=Object.entries(FAM).map(([k,f])=>`<button data-fam="${k}" aria-pressed="${k===fam}">${f.label}</button>`).join("");
+function renderFields(){
+  const f=FAM[fam];
+  $("#fields").innerHTML=f.fields.map(([key,lab,type,opts])=>{
+    const id=`f-${fam}-${key}`, v=vals[fam][key];
+    if(type==="sel") return `<div><label class="lbl" for="${id}">${lab}</label><select id="${id}" data-k="${key}">${opts().map(o=>`<option${o===v?" selected":""}>${esc(o)}</option>`).join("")}</select></div>`;
+    if(type==="yn") return `<div><span class="lbl">${lab}</span><div class="yn" data-k="${key}">${["N","Y"].map(o=>`<button data-v="${o}" aria-pressed="${o===v}">${o==="N"?"No":"Yes"}</button>`).join("")}</div></div>`;
+    return `<div><label class="lbl" for="${id}">${lab}</label><input id="${id}" data-k="${key}" type="${type==="num"?"number":"text"}" ${type==="num"?'step="any" min="0"':""} value="${esc(v)}"></div>`;
+  }).join("");
+}
+
+/* ---------- cards ---------- */
+function checks(r,extra){
+  const out=[]; const c=r["SG Compliance Check"]||"";
+  if(c==="OK"||!c) out.push(["OK","SG checks OK"]);
+  else c.split(/(?=FAIL:|NOTE:)/).map(s=>s.trim()).filter(Boolean).forEach(s=>out.push([s.slice(0,4),s.slice(5).trim().replace(/\.$/,"")]));
+  if(r["BCA ERSS Submission (indicative)"]) out.push(["BCA",`BCA: ${r["BCA ERSS Submission (indicative)"]}`]);
+  return out.concat(extra||[]).map(([k,t])=>`<span class="chk ${k}">${esc(t)}</span>`).join("");
+}
+function card(r,best,v){
+  const f=FAM[r._fam], inPack=pack.some(p=>p.id===r["Design ID"]), can=r.Selectable==="Y", u=r["Qty Unit"]||"unit";
+  const q=[["Concrete",r["Concrete (m3/unit)"],"m³"],["Rebar",r["Rebar (kg/unit)"],"kg"],["Steel",r["Steel (kg/unit)"],"kg"]].filter(x=>+x[1]>0);
+  const specs=f.specs.filter(h=>r[h]!==null&&r[h]!==""&&r[h]!==undefined&&r[h]!=="-").map(h=>`<div><dt>${esc(h.replace(/ \(.*\)$/,""))}</dt><dd>${esc(r[h])}</dd></div>`).join("");
+  const file=(lab,name)=>`<div><span class="k">${lab}</span>${!name||name==="n/a"?`<span class="na">not used</span>`:`<span class="file"><code title="${esc(r["Design Folder"]+name)}">${esc(name)}</code><button class="mini" data-copy="${esc(r["Design Folder"]+name)}">Copy path</button></span>`}</div>`;
+  return `<article class="sheet${best?" best":""}">
+   <div class="draw">${DRAW[r._fam](r)}<div class="cap">${esc(CAP[r._fam](r))}</div></div>
+   <div class="info">
+     <div class="idline"><span class="id">${esc(r["Design ID"])}</span><span class="pill ${r.Status}">${r.Status}</span>${best?'<span class="pill tag">Best match</span>':""}</div>
+     <div class="desc">${esc(r.Description)}</div>
+     <div class="checks">${checks(r,f.extra&&v?f.extra(r,v):[])}</div>
+     <dl class="specs">${specs}${q.map(([k,val,un])=>`<div><dt>${k}</dt><dd>${(+val).toLocaleString("en-SG")}<span class="hint"> ${un}/${esc(u)}</span></dd></div>`).join("")}</dl>
+     ${r["Limitations / Notes"]?`<div class="lim">${esc(r["Limitations / Notes"])}</div>`:""}
+     <div class="add">${can?`<input type="number" min="0" step="any" id="len-${esc(r["Design ID"])}" aria-label="Quantity" placeholder="qty (${esc(u)})">
+       <button class="btn" data-add="${esc(r["Design ID"])}">${inPack?"Add again":"Add to Tender Pack"}</button>${inPack?'<span class="hint">Already in pack</span>':""}`
+       :`<span class="hint">${r.Status!=="Approved"?"Not available for tender use until the status is Approved.":"Fails a Singapore check, so it cannot be used."}</span>`}</div>
+     <div class="files">
+       <div><span class="k">Drawing no. / rev</span><span class="id" style="font-size:.85rem">${esc(r["Drawing No."])} / ${esc(r.Rev)}</span></div>
+       ${file("CAD detail",r["CAD Detail (.dwg)"])}${file("Drawing PDF",r["Drawing (.pdf)"])}${file("STAAD.Pro",r["STAAD.Pro (.std)"])}${file("Calc sheet",r["Calc Sheet (.xlsx)"])}${file("Calc report",r["Calc Report (.pdf)"])}
+     </div>
+   </div></article>`;
+}
+function renderSel(){
+  const f=FAM[fam], v=vals[fam], recs=DATA.reg[f.sheet].filter(r=>f.match(r,v)).sort(f.sort);
+  if(f.list){
+    $("#verdict").innerHTML=`<div class="verdict ok">${recs.length} design${recs.length===1?"":"s"} · ${esc(f.req(v))}</div>`;
+    $("#results").innerHTML=recs.length?recs.map(r=>card(r,false,v)).join(""):`<div class="panel empty">No designs match that search.</div>`; return;
+  }
+  const ok=recs.filter(r=>r.Selectable==="Y"), fail=recs.filter(r=>r.Selectable!=="Y"&&/FAIL/.test(r["SG Compliance Check"]||"")),
+        pend=recs.filter(r=>r.Selectable!=="Y"&&!/FAIL/.test(r["SG Compliance Check"]||"")&&(r.Status==="Checked"||r.Status==="WIP"));
+  let h="";
+  if(!ok.length) h=`<div class="verdict bad"><div>No approved standard design for this requirement<small>${esc(f.req(v))}. Plan a bespoke design${pend.length?`, or chase approval of ${pend.map(p=>esc(p["Design ID"])).join(", ")}`:""}.</small></div></div>`;
+  else h=f.exact(ok[0],v)?`<div class="verdict ok"><div>Match<small>${esc(f.req(v))}</small></div></div>`
+       :`<div class="verdict warn"><div>Nearest design covers more than required (conservative)<small>${esc(f.req(v))} → ${esc(ok[0].Description)}</small></div></div>`;
+  $("#verdict").innerHTML=h;
+  let o=ok.length?card(ok[0],true,v):"";
+  if(ok.length>1) o+=`<h3 class="others-h">Other approved options</h3>`+ok.slice(1,4).map(r=>card(r,false,v)).join("");
+  if(pend.length) o+=`<h3 class="others-h">Also matches, awaiting approval</h3>`+pend.map(r=>card(r,false,v)).join("");
+  if(fail.length) o+=`<h3 class="others-h">Matches but fails a Singapore check</h3>`+fail.map(r=>card(r,false,v)).join("");
+  $("#results").innerHTML=o;
+}
+
+/* ---------- tender pack ---------- */
+const fmt=(n,dp=1)=>n.toLocaleString("en-SG",{minimumFractionDigits:dp,maximumFractionDigits:dp});
+function rows(){return pack.map(p=>{const r=byId[p.id]; if(!r) return {p,r:null,q:0,conc:0,reb:0,stl:0,fw:0,exc:0};
+  const q=+p.qty||0, n=h=>q*(+r[h]||0);
+  return {p,r,q,conc:n("Concrete (m3/unit)"),reb:n("Rebar (kg/unit)")/1000,stl:n("Steel (kg/unit)")/1000,fw:n("Formwork (m2/unit)"),exc:n("Excavation (m3/unit)")};});}
+function flag(x){ if(!x.r) return ["warn","ID not found"]; if(x.r.Status!=="Approved") return ["warn",x.r.Status]; if(x.r.Selectable!=="Y") return ["warn","Fails SG check"];
+  if(!x.q) return ["warn","Enter qty"]; if(!x.p.sheet) return ["warn","Enter sheet"]; return ["ok","OK"]; }
+function renderTp(){
+  savePack();
+  if(!pack.length){$("#tpTable").innerHTML=`<div class="empty">The tender pack is empty. Find a design in the Selector and choose Add to Tender Pack.</div>`;return;}
+  const R=rows(),T=R.reduce((a,r)=>({conc:a.conc+r.conc,reb:a.reb+r.reb,stl:a.stl+r.stl,fw:a.fw+r.fw,exc:a.exc+r.exc}),{conc:0,reb:0,stl:0,fw:0,exc:0});
+  $("#tpTable").innerHTML=`<table><thead><tr><th>#</th><th>Design ID</th><th>Description</th><th>Location / remarks</th><th class="n">Qty</th><th>Unit</th><th class="n">CAD sheet</th><th>Dwg / rev</th>
+    <th class="n">Concrete m³</th><th class="n">Rebar t</th><th class="n">Steel t</th><th class="n">Formwork m²</th><th class="n">Excav. m³</th><th>Check</th><th></th></tr></thead><tbody>
+    ${R.map((x,i)=>{const [fc,ft]=flag(x); return `<tr><td>${i+1}</td><td><code>${esc(x.p.id)}</code></td><td>${esc(x.r?x.r.Description:"")}</td>
+      <td><input type="text" data-i="${i}" data-f="loc" value="${esc(x.p.loc||"")}" aria-label="Location"></td>
+      <td class="n"><input type="number" min="0" step="any" data-i="${i}" data-f="qty" value="${x.p.qty??""}" style="width:80px" aria-label="Quantity"></td>
+      <td>${esc(x.r?x.r["Qty Unit"]:"")}</td>
+      <td class="n"><input class="sheet" type="number" min="1" step="1" data-i="${i}" data-f="sheet" value="${x.p.sheet??""}" aria-label="CAD sheet number"></td>
+      <td><code>${esc(x.r?x.r["Drawing No."]+"/"+x.r.Rev:"")}</code></td>
+      <td class="n">${fmt(x.conc)}</td><td class="n">${fmt(x.reb,2)}</td><td class="n">${fmt(x.stl,2)}</td><td class="n">${fmt(x.fw)}</td><td class="n">${fmt(x.exc)}</td>
+      <td><span class="flag ${fc}">${esc(ft)}</span></td><td><button class="x" data-del="${i}" aria-label="Remove">×</button></td></tr>`;}).join("")}</tbody>
+    <tfoot><tr><td colspan="8">Total (preliminary)</td><td class="n">${fmt(T.conc)}</td><td class="n">${fmt(T.reb,2)}</td><td class="n">${fmt(T.stl,2)}</td><td class="n">${fmt(T.fw)}</td><td class="n">${fmt(T.exc)}</td><td colspan="2"></td></tr></tfoot></table>`;
+}
+
+/* ---------- coverage ---------- */
+const COV=[
+  ["Drains & culverts: approved designs by internal width (mm)","Drain_Register","Drain Type","Internal Width (mm)",{exact:[450,600,750,900,1050,1200,1500,1800,2000,2400,3000]}],
+  ["RC & gravity walls: by retained height (m)","RW_Register","Wall Type","Retained Height (m)",{bands:[0,1,1.5,2,2.5,3,3.5,4,4.5,5,6,8]}],
+  ["Embedded walls: by excavation depth (m)","Embedded_Wall_Register","Wall Type","Excavation Depth (m)",{bands:[0,3,4.5,6,9,12,15,20,30]}],
+  ["Sewer manholes: by max depth (m)","Manhole_Register","Manhole Type","Max Depth (m)",{bands:[0,3,4.5,6,8,10,15]}],
+  ["Temporary ERSS pits: by excavation depth (m)","ERSS_Pit_Register","ERSS Type","Excavation Depth (m)",{bands:[0,1.5,3,4,6,8,10,15]}],
+  ["Covered linkways: by roof width (m)","Linkway_Register","Linkway Type","Roof Width, eave to eave (m)",{exact:[2.4,3,3.6,4.8]}]];
+function renderCov(){
+  const cell=n=>`<td class="c ${n?"p":"z"}">${n}</td>`;
+  let h=COV.map(([title,sheet,rowh,colh,o])=>{
+    const recs=DATA.reg[sheet].filter(r=>r.Selectable==="Y"), types=DATA.lists[sheet]||uniq(sheet,rowh);
+    const heads=o.exact?o.exact.map(String):o.bands.slice(1).map((b,i)=>`${o.bands[i]}–${b}`);
+    const cnt=(t,j)=>recs.filter(r=>r[rowh]===t&&(o.exact?+r[colh]===o.exact[j]:(r[colh]>o.bands[j]&&r[colh]<=o.bands[j+1]))).length;
+    return `<div class="panel"><h2>${esc(title)}</h2><div class="scroll"><table class="heat"><thead><tr><th>Type</th>${heads.map(x=>`<th class="n">${x}</th>`).join("")}</tr></thead><tbody>
+      ${types.map(t=>`<tr><td>${esc(t)}</td>${heads.map((_,j)=>cell(cnt(t,j))).join("")}</tr>`).join("")}</tbody></table></div></div>`;}).join("");
+  const st=["Approved","Checked","WIP","Superseded"];
+  h+=`<div class="panel"><h2>Library status</h2><div class="scroll"><table><thead><tr><th>Register</th>${st.map(s=>`<th class="n">${s}</th>`).join("")}<th class="n">Approved but fails check</th></tr></thead><tbody>
+    ${Object.values(FAM).map(f=>{const R=DATA.reg[f.sheet];return `<tr><td>${f.label}</td>${st.map(s=>`<td class="n">${R.filter(r=>r.Status===s).length}</td>`).join("")}<td class="n">${R.filter(r=>r.Status==="Approved"&&r.Selectable!=="Y").length}</td></tr>`;}).join("")}</tbody></table></div>
+    <p class="note">Red cells are gaps: no approved design in that range. A tender that needs one needs a bespoke design, or a new standard design for the library.</p></div>`;
+  $("#cov").innerHTML=h;
+}
+
+/* ---------- clipboard ---------- */
+function toast(m){const t=$("#toast");t.textContent=m;t.classList.add("show");clearTimeout(toast.h);toast.h=setTimeout(()=>t.classList.remove("show"),1800);}
+function copy(text,msg){
+  const fb=()=>{const ta=document.createElement("textarea");ta.className="hidden-copy";ta.value=text;document.body.appendChild(ta);ta.select();
+    let ok=false;try{ok=document.execCommand("copy")}catch(e){} ta.remove(); toast(ok?msg:"Copy blocked here. Select the text and press Ctrl+C.");};
+  try{navigator.clipboard.writeText(text).then(()=>toast(msg),fb)}catch(e){fb()}
+}
+
+/* ---------- events ---------- */
+document.querySelectorAll("nav.tabs button").forEach(b=>b.addEventListener("click",()=>{
+  document.querySelectorAll("nav.tabs button").forEach(x=>x.setAttribute("aria-selected",x===b));
+  ["sel","tp","cov"].forEach(v=>$("#view-"+v).hidden=v!==b.dataset.view);
+  ({sel:renderSel,tp:renderTp,cov:renderCov})[b.dataset.view](); store.set("sd-tab",b.dataset.view);}));
+$("#famSeg").addEventListener("click",e=>{const b=e.target.closest("button");if(!b)return;fam=b.dataset.fam;store.set("sd-fam",fam);
+  $("#famSeg").querySelectorAll("button").forEach(x=>x.setAttribute("aria-pressed",x===b));renderFields();renderSel();});
+$("#fields").addEventListener("input",e=>{const k=e.target.dataset.k;if(!k)return;const f=FAM[fam].fields.find(x=>x[0]===k);
+  vals[fam][k]=f[2]==="num"?(+e.target.value||0):e.target.value;renderSel();});
+$("#fields").addEventListener("click",e=>{const b=e.target.closest(".yn button");if(!b)return;const k=b.parentElement.dataset.k;vals[fam][k]=b.dataset.v;
+  b.parentElement.querySelectorAll("button").forEach(x=>x.setAttribute("aria-pressed",x===b));renderSel();});
+$("#results").addEventListener("click",e=>{
+  const a=e.target.closest("[data-add]"); if(a){const id=a.dataset.add;const inp=document.getElementById("len-"+id);
+    const maxSheet=pack.reduce((m,p)=>Math.max(m,+p.sheet||0),0)||1;
+    pack.push({id,loc:"",qty:inp&&inp.value?+inp.value:"",sheet:maxSheet});savePack();toast("Added to Tender Pack");renderSel();return;}
+  const c=e.target.closest("[data-copy]"); if(c) copy(c.dataset.copy,"Path copied");});
+$("#tpTable").addEventListener("change",e=>{const i=e.target.dataset.i;if(i==null)return;const f=e.target.dataset.f;
+  pack[i][f]=(f==="qty"||f==="sheet")?(e.target.value===""?"":+e.target.value):e.target.value;renderTp();});
+$("#tpTable").addEventListener("click",e=>{const d=e.target.closest("[data-del]");if(d){pack.splice(+d.dataset.del,1);renderTp();}});
+$("#tpName").addEventListener("input",e=>store.set("sd-name",e.target.value));
+$("#clearTp").addEventListener("click",()=>{pack=[];renderTp();toast("Tender Pack cleared");});
+$("#copyCad").addEventListener("click",()=>{
+  const counts={}; const lines=[`PROJECT\t${$("#tpName").value}`,`DWGPREFIX\t${$("#tpPrefix").value}`,`LIBROOT\t${SG.root}`,"",["SHEET","DETAIL","CADFILE","SCALE","TITLE","DESIGNID","REV","STATUS"].join("\t")];
+  rows().filter(x=>x.r).forEach(x=>{const s=+x.p.sheet||1; let d=""; if(x.r.Status==="Approved"){counts[s]=(counts[s]||0)+1; d=counts[s];}
+    lines.push([s,d,x.r["Design Folder"]+x.r["CAD Detail (.dwg)"],x.r["Detail Scale (1:n)"],String(x.r.Description).toUpperCase(),x.r["Design ID"],x.r.Rev,x.r.Status].join("\t"));});
+  copy(lines.join("\r\n"),"CAD export copied. Paste into Notepad and save as .txt");});
+$("#copyTable").addEventListener("click",()=>{
+  const head=["Item","Design ID","Description","Location","Qty","Unit","CAD sheet","Drawing No.","Rev","Status","Concrete (m3)","Rebar (t)","Steel (t)","Formwork (m2)","Excavation (m3)"];
+  const lines=[$("#tpName").value,head.join("\t"),...rows().filter(x=>x.r).map((x,i)=>[i+1,x.r["Design ID"],x.r.Description,x.p.loc||"",x.q,x.r["Qty Unit"],x.p.sheet||"",x.r["Drawing No."],x.r.Rev,x.r.Status,x.conc.toFixed(2),x.reb.toFixed(3),x.stl.toFixed(3),x.fw.toFixed(2),x.exc.toFixed(2)].join("\t"))];
+  copy(lines.join("\n"),"Schedule copied. Paste into Excel.");});
+$("#copyFiles").addEventListener("click",()=>{const out=[];rows().filter(x=>x.r).forEach(x=>["CAD Detail (.dwg)","Drawing (.pdf)","STAAD.Pro (.std)","Calc Sheet (.xlsx)","Calc Report (.pdf)"].forEach(h=>{const n=x.r[h];if(n&&n!=="n/a")out.push(x.r["Design Folder"]+n);}));
+  const u=[...new Set(out)];copy(u.join("\n"),`${u.length} file paths copied`);});
+
+savePack(); renderFields(); renderSel();
+const lastTab=store.get("sd-tab","sel"); if(lastTab!=="sel"){const b=document.querySelector(`[data-view="${lastTab}"]`); if(b) b.click();}
+</script>
