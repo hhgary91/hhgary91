@@ -1,0 +1,118 @@
+// Loads every register into one searchable collection.
+// Paste into btnRefresh.OnSelect (scrSearch). scrSearch.OnVisible runs it the first time.
+Refresh(tblDrain); Refresh(tblRW); Refresh(tblEmbedded); Refresh(tblManhole); Refresh(tblERSSPit); Refresh(tblLinkway); Refresh(tblOther);
+Clear(colDesigns);
+Collect(colDesigns,
+    ForAll(Filter(tblDrain, !IsBlank('Design ID')) As r,
+        {
+            Register: "Drain", ID: Text(r.'Design ID'), Desc: Text(r.Description), Status: Text(r.Status),
+            SG: Text(r.'SG Compliance Check'), Sel: Text(r.Selectable), Review: Text(r.'Review Status'),
+            Auth: Text(r.'Source Authority'), Project: Text(r.'Source Project Ref'), ProjectName: Text(r.'Source Project Name'),
+            Dwg: Text(r.'Drawing No.'), Rev: Text(r.Rev), Scale: Text(r.'Detail Scale (1:n)'), Unit: Text(r.'Qty Unit'),
+            QP: Text(r.'Approved By (QP)'), Code: Text(r.'Code Basis'), Limits: Text(r.'Limitations / Notes'),
+            Complete: Text(Value(r.'Data Completeness') * 100, "0") & "%",
+            Link: Text(r.'Web Folder Link'), CAD: Text(r.'CAD Detail (.dwg)'), PDF: Text(r.'Drawing (.pdf)'),
+            STAAD: Text(r.'STAAD.Pro (.std)'), CalcX: Text(r.'Calc Sheet (.xlsx)'), CalcP: Text(r.'Calc Report (.pdf)'),
+            Hay: Lower(r.'Design ID' & " " & r.Description & " " & r.'Keywords / Tags' & " " & r.Status & " " &
+                       r.'Source Project Ref' & " " & r.'Source Project Name' & " " & r.'Source Authority' & " " & r.'Code Basis')
+        }
+    )
+);
+Collect(colDesigns,
+    ForAll(Filter(tblRW, !IsBlank('Design ID')) As r,
+        {
+            Register: "RC wall", ID: Text(r.'Design ID'), Desc: Text(r.Description), Status: Text(r.Status),
+            SG: Text(r.'SG Compliance Check'), Sel: Text(r.Selectable), Review: Text(r.'Review Status'),
+            Auth: Text(r.'Source Authority'), Project: Text(r.'Source Project Ref'), ProjectName: Text(r.'Source Project Name'),
+            Dwg: Text(r.'Drawing No.'), Rev: Text(r.Rev), Scale: Text(r.'Detail Scale (1:n)'), Unit: Text(r.'Qty Unit'),
+            QP: Text(r.'Approved By (QP)'), Code: Text(r.'Code Basis'), Limits: Text(r.'Limitations / Notes'),
+            Complete: Text(Value(r.'Data Completeness') * 100, "0") & "%",
+            Link: Text(r.'Web Folder Link'), CAD: Text(r.'CAD Detail (.dwg)'), PDF: Text(r.'Drawing (.pdf)'),
+            STAAD: Text(r.'STAAD.Pro (.std)'), CalcX: Text(r.'Calc Sheet (.xlsx)'), CalcP: Text(r.'Calc Report (.pdf)'),
+            Hay: Lower(r.'Design ID' & " " & r.Description & " " & r.'Keywords / Tags' & " " & r.Status & " " &
+                       r.'Source Project Ref' & " " & r.'Source Project Name' & " " & r.'Source Authority' & " " & r.'Code Basis')
+        }
+    )
+);
+Collect(colDesigns,
+    ForAll(Filter(tblEmbedded, !IsBlank('Design ID')) As r,
+        {
+            Register: "Embedded wall", ID: Text(r.'Design ID'), Desc: Text(r.Description), Status: Text(r.Status),
+            SG: Text(r.'SG Compliance Check'), Sel: Text(r.Selectable), Review: Text(r.'Review Status'),
+            Auth: Text(r.'Source Authority'), Project: Text(r.'Source Project Ref'), ProjectName: Text(r.'Source Project Name'),
+            Dwg: Text(r.'Drawing No.'), Rev: Text(r.Rev), Scale: Text(r.'Detail Scale (1:n)'), Unit: Text(r.'Qty Unit'),
+            QP: Text(r.'Approved By (QP)'), Code: Text(r.'Code Basis'), Limits: Text(r.'Limitations / Notes'),
+            Complete: Text(Value(r.'Data Completeness') * 100, "0") & "%",
+            Link: Text(r.'Web Folder Link'), CAD: Text(r.'CAD Detail (.dwg)'), PDF: Text(r.'Drawing (.pdf)'),
+            STAAD: Text(r.'STAAD.Pro (.std)'), CalcX: Text(r.'Calc Sheet (.xlsx)'), CalcP: Text(r.'Calc Report (.pdf)'),
+            Hay: Lower(r.'Design ID' & " " & r.Description & " " & r.'Keywords / Tags' & " " & r.Status & " " &
+                       r.'Source Project Ref' & " " & r.'Source Project Name' & " " & r.'Source Authority' & " " & r.'Code Basis')
+        }
+    )
+);
+Collect(colDesigns,
+    ForAll(Filter(tblManhole, !IsBlank('Design ID')) As r,
+        {
+            Register: "Manhole", ID: Text(r.'Design ID'), Desc: Text(r.Description), Status: Text(r.Status),
+            SG: Text(r.'SG Compliance Check'), Sel: Text(r.Selectable), Review: Text(r.'Review Status'),
+            Auth: Text(r.'Source Authority'), Project: Text(r.'Source Project Ref'), ProjectName: Text(r.'Source Project Name'),
+            Dwg: Text(r.'Drawing No.'), Rev: Text(r.Rev), Scale: Text(r.'Detail Scale (1:n)'), Unit: Text(r.'Qty Unit'),
+            QP: Text(r.'Approved By (QP)'), Code: Text(r.'Code Basis'), Limits: Text(r.'Limitations / Notes'),
+            Complete: Text(Value(r.'Data Completeness') * 100, "0") & "%",
+            Link: Text(r.'Web Folder Link'), CAD: Text(r.'CAD Detail (.dwg)'), PDF: Text(r.'Drawing (.pdf)'),
+            STAAD: Text(r.'STAAD.Pro (.std)'), CalcX: Text(r.'Calc Sheet (.xlsx)'), CalcP: Text(r.'Calc Report (.pdf)'),
+            Hay: Lower(r.'Design ID' & " " & r.Description & " " & r.'Keywords / Tags' & " " & r.Status & " " &
+                       r.'Source Project Ref' & " " & r.'Source Project Name' & " " & r.'Source Authority' & " " & r.'Code Basis')
+        }
+    )
+);
+Collect(colDesigns,
+    ForAll(Filter(tblERSSPit, !IsBlank('Design ID')) As r,
+        {
+            Register: "ERSS pit", ID: Text(r.'Design ID'), Desc: Text(r.Description), Status: Text(r.Status),
+            SG: Text(r.'SG Compliance Check'), Sel: Text(r.Selectable), Review: Text(r.'Review Status'),
+            Auth: Text(r.'Source Authority'), Project: Text(r.'Source Project Ref'), ProjectName: Text(r.'Source Project Name'),
+            Dwg: Text(r.'Drawing No.'), Rev: Text(r.Rev), Scale: Text(r.'Detail Scale (1:n)'), Unit: Text(r.'Qty Unit'),
+            QP: Text(r.'Approved By (QP)'), Code: Text(r.'Code Basis'), Limits: Text(r.'Limitations / Notes'),
+            Complete: Text(Value(r.'Data Completeness') * 100, "0") & "%",
+            Link: Text(r.'Web Folder Link'), CAD: Text(r.'CAD Detail (.dwg)'), PDF: Text(r.'Drawing (.pdf)'),
+            STAAD: Text(r.'STAAD.Pro (.std)'), CalcX: Text(r.'Calc Sheet (.xlsx)'), CalcP: Text(r.'Calc Report (.pdf)'),
+            Hay: Lower(r.'Design ID' & " " & r.Description & " " & r.'Keywords / Tags' & " " & r.Status & " " &
+                       r.'Source Project Ref' & " " & r.'Source Project Name' & " " & r.'Source Authority' & " " & r.'Code Basis')
+        }
+    )
+);
+Collect(colDesigns,
+    ForAll(Filter(tblLinkway, !IsBlank('Design ID')) As r,
+        {
+            Register: "Linkway", ID: Text(r.'Design ID'), Desc: Text(r.Description), Status: Text(r.Status),
+            SG: Text(r.'SG Compliance Check'), Sel: Text(r.Selectable), Review: Text(r.'Review Status'),
+            Auth: Text(r.'Source Authority'), Project: Text(r.'Source Project Ref'), ProjectName: Text(r.'Source Project Name'),
+            Dwg: Text(r.'Drawing No.'), Rev: Text(r.Rev), Scale: Text(r.'Detail Scale (1:n)'), Unit: Text(r.'Qty Unit'),
+            QP: Text(r.'Approved By (QP)'), Code: Text(r.'Code Basis'), Limits: Text(r.'Limitations / Notes'),
+            Complete: Text(Value(r.'Data Completeness') * 100, "0") & "%",
+            Link: Text(r.'Web Folder Link'), CAD: Text(r.'CAD Detail (.dwg)'), PDF: Text(r.'Drawing (.pdf)'),
+            STAAD: Text(r.'STAAD.Pro (.std)'), CalcX: Text(r.'Calc Sheet (.xlsx)'), CalcP: Text(r.'Calc Report (.pdf)'),
+            Hay: Lower(r.'Design ID' & " " & r.Description & " " & r.'Keywords / Tags' & " " & r.Status & " " &
+                       r.'Source Project Ref' & " " & r.'Source Project Name' & " " & r.'Source Authority' & " " & r.'Code Basis')
+        }
+    )
+);
+Collect(colDesigns,
+    ForAll(Filter(tblOther, !IsBlank('Design ID')) As r,
+        {
+            Register: "Others", ID: Text(r.'Design ID'), Desc: Text(r.Description), Status: Text(r.Status),
+            SG: Text(r.'SG Compliance Check'), Sel: Text(r.Selectable), Review: Text(r.'Review Status'),
+            Auth: Text(r.'Source Authority'), Project: Text(r.'Source Project Ref'), ProjectName: Text(r.'Source Project Name'),
+            Dwg: Text(r.'Drawing No.'), Rev: Text(r.Rev), Scale: Text(r.'Detail Scale (1:n)'), Unit: Text(r.'Qty Unit'),
+            QP: Text(r.'Approved By (QP)'), Code: Text(r.'Code Basis'), Limits: Text(r.'Limitations / Notes'),
+            Complete: Text(Value(r.'Data Completeness') * 100, "0") & "%",
+            Link: Text(r.'Web Folder Link'), CAD: Text(r.'CAD Detail (.dwg)'), PDF: Text(r.'Drawing (.pdf)'),
+            STAAD: Text(r.'STAAD.Pro (.std)'), CalcX: Text(r.'Calc Sheet (.xlsx)'), CalcP: Text(r.'Calc Report (.pdf)'),
+            Hay: Lower(r.'Design ID' & " " & r.Description & " " & r.'Keywords / Tags' & " " & r.Status & " " &
+                       r.'Source Project Ref' & " " & r.'Source Project Name' & " " & r.'Source Authority' & " " & r.'Code Basis')
+        }
+    )
+);
+Set(gblLoaded, Now());
+Notify("Register loaded: " & CountRows(colDesigns) & " designs", NotificationType.Success)

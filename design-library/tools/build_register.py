@@ -66,6 +66,8 @@ srows = [
     ("sec", "LIBRARY FOLDERS (SharePoint document library synced to PC)"),
     ("root", "Library root folder", r"C:\Users\yourname\YourCompany\Design Library - Documents", "", "Path of the synced SharePoint library on your PC", "SET"),
     ("rootn", "Library root (normalised)", '=IF(RIGHT(B5,1)="\\",B5,B5&"\\")', "", "Automatic", "calc"),
+    ("webroot", "Library web address (SharePoint)", "https://yourcompany.sharepoint.com/sites/Engineering/Design Library", "", "Browser address of the same document library (used by Power Apps links)", "SET"),
+    ("webn", "Library web address (normalised)", '=SUBSTITUTE(IF(RIGHT(B7,1)="/",B7,B7&"/")," ","%20")', "", "Automatic", "calc"),
     ("f_dr", "Drainage folder", "01_Drainage", "", "", "SET"),
     ("f_rw", "Retaining wall folder", "02_Retaining_Wall", "", "", "SET"),
     ("f_ew", "Embedded wall / ERSS folder", "03_Embedded_Wall", "", "", "SET"),
@@ -134,7 +136,7 @@ for row in srows:
     put(st, f"F{r}", "", f_in, fill_in)
     put(st, f"G{r}", "", f_in, fill_in, "dd-mmm-yy")
     r += 1
-assert S["root"] == "SG_Criteria!$B$5"
+assert S["root"] == "SG_Criteria!$B$5" and S["webroot"] == "SG_Criteria!$B$7"
 r += 1
 st[f"A{r}"] = "REFERENCE DOCUMENTS (edition the library is built on)"
 st[f"A{r}"].font = f_sec
@@ -426,6 +428,7 @@ def file_cols(folder_key):
         ("Detail Scale (1:n)", "in", 8, {"dv": "Scale"}),
         ("STAAD.Pro Model? (Y/N)", "in", 9, {"dv": "YN"}),
         ("Design Folder", "calc", 46, {"formula": folder, "file": True}),
+        ("Web Folder Link", "calc", 50, {"formula": lambda r, i: f'=IF({i["Design ID"]}{r}="","",{S["webn"]}&{S[folder_key]}&"/"&{i["Design ID"]}{r}&"/")', "file": True}),
         ("CAD Detail (.dwg)", "calc", 30, {"formula": fn("_CAD.dwg"), "file": True}),
         ("Drawing (.pdf)", "calc", 30, {"formula": fn("_DWG.pdf"), "file": True}),
         ("STAAD.Pro (.std)", "calc", 30, {"formula": fn("_STAAD.std", "STAAD.Pro Model? (Y/N)"), "file": True}),
@@ -1164,6 +1167,7 @@ DESC = {
     "Last Reviewed": "Date the design was last checked against current codes.",
     "Next Review Due": "Last Reviewed + review interval (SG_Criteria).",
     "Review Status": "Flags designs never reviewed or overdue for review.",
+    "Web Folder Link": "SharePoint web address of the design folder. Power Apps opens files with this link + file name.",
     "Data Completeness": "Share of required fields filled. Should reach 100% before Status = Approved.",
     "Selectable": "Y when Approved and no FAIL. Used by the selector.",
     "Selector Key": "Internal lookup key for the selector.",

@@ -1,0 +1,138 @@
+# Paste onto an EMPTY screen named scrDetail (see the guide, step 6).
+- btnBack:
+    Control: Classic/Button@2.2.0
+    Properties:
+      Text: ="< Back to results"
+      X: =24
+      Y: =16
+      Width: =200
+      Height: =40
+      OnSelect: =Back()
+- lblID:
+    Control: Label@2.5.1
+    Properties:
+      Text: =gblSel.ID
+      Font: =Font.'Courier New'
+      Size: =20
+      FontWeight: =FontWeight.Bold
+      X: =24
+      Y: =64
+      Width: =Parent.Width - 48
+      Height: =40
+- lblDesc:
+    Control: Label@2.5.1
+    Properties:
+      Text: =gblSel.Desc
+      Size: =14
+      X: =24
+      Y: =104
+      Width: =Parent.Width - 48
+      Height: =36
+- lblKeys:
+    Control: Label@2.5.1
+    Properties:
+      Text: |-
+        ="Register: " & gblSel.Register & "     Status: " & gblSel.Status & "     Drawing: " & gblSel.Dwg & " Rev " & gblSel.Rev & "     Scale 1:" & gblSel.Scale & "     Qty unit: " & gblSel.Unit & "     Approved by: " & gblSel.QP & "     Source: " & gblSel.Project & " " & gblSel.ProjectName
+      X: =24
+      Y: =144
+      Width: =Parent.Width - 48
+      Height: =52
+      Size: =11
+- lblChecks:
+    Control: Label@2.5.1
+    Properties:
+      Text: |-
+        =If(gblSel.Sel <> "Y", "NOT FOR TENDER USE (status " & gblSel.Status & " or fails an SG check)" & Char(10), "") & "SG check: " & gblSel.SG & Char(10) & "Review: " & gblSel.Review & "     Data completeness: " & gblSel.Complete
+      X: =24
+      Y: =200
+      Width: =Parent.Width - 48
+      Height: =76
+      Size: =11
+      Fill: =If(gblSel.Sel = "Y", RGBA(223, 240, 229, 1), RGBA(251, 236, 214, 1))
+      Color: =If(gblSel.Sel = "Y", RGBA(47, 122, 74, 1), RGBA(163, 90, 0, 1))
+      PaddingLeft: =10
+- lblFiles:
+    Control: Label@2.5.1
+    Properties:
+      Text: ="FILES (open from SharePoint)"
+      FontWeight: =FontWeight.Bold
+      X: =24
+      Y: =286
+      Width: =400
+      Height: =28
+- btnCAD:
+    Control: Classic/Button@2.2.0
+    Properties:
+      Text: ="CAD detail (.dwg)"
+      X: =24 + 0 * 214
+      Y: =318
+      Width: =200
+      Height: =40
+      Fill: =RGBA(29, 90, 140, 1)
+      DisplayMode: =If(IsBlank(gblSel.CAD) || gblSel.CAD = "n/a", DisplayMode.Disabled, DisplayMode.Edit)
+      OnSelect: =Launch(gblSel.Link & gblSel.CAD)
+- btnPDF:
+    Control: Classic/Button@2.2.0
+    Properties:
+      Text: ="Drawing (.pdf)"
+      X: =24 + 1 * 214
+      Y: =318
+      Width: =200
+      Height: =40
+      Fill: =RGBA(29, 90, 140, 1)
+      DisplayMode: =If(IsBlank(gblSel.PDF) || gblSel.PDF = "n/a", DisplayMode.Disabled, DisplayMode.Edit)
+      OnSelect: =Launch(gblSel.Link & gblSel.PDF)
+- btnSTAAD:
+    Control: Classic/Button@2.2.0
+    Properties:
+      Text: ="STAAD.Pro (.std)"
+      X: =24 + 2 * 214
+      Y: =318
+      Width: =200
+      Height: =40
+      Fill: =RGBA(29, 90, 140, 1)
+      DisplayMode: =If(IsBlank(gblSel.STAAD) || gblSel.STAAD = "n/a", DisplayMode.Disabled, DisplayMode.Edit)
+      OnSelect: =Launch(gblSel.Link & gblSel.STAAD)
+- btnCalcX:
+    Control: Classic/Button@2.2.0
+    Properties:
+      Text: ="Calc sheet (.xlsx)"
+      X: =24 + 3 * 214
+      Y: =318
+      Width: =200
+      Height: =40
+      Fill: =RGBA(29, 90, 140, 1)
+      DisplayMode: =If(IsBlank(gblSel.CalcX) || gblSel.CalcX = "n/a", DisplayMode.Disabled, DisplayMode.Edit)
+      OnSelect: =Launch(gblSel.Link & gblSel.CalcX)
+- btnCalcP:
+    Control: Classic/Button@2.2.0
+    Properties:
+      Text: ="Calc report (.pdf)"
+      X: =24 + 4 * 214
+      Y: =318
+      Width: =200
+      Height: =40
+      Fill: =RGBA(29, 90, 140, 1)
+      DisplayMode: =If(IsBlank(gblSel.CalcP) || gblSel.CalcP = "n/a", DisplayMode.Disabled, DisplayMode.Edit)
+      OnSelect: =Launch(gblSel.Link & gblSel.CalcP)
+- galRebar:
+    Control: Gallery@2.15.0
+    Variant: Vertical
+    Properties:
+      Items: =Filter(tblRebar, 'Design ID' = gblSel.ID)
+      X: =24
+      Y: =372
+      Width: =560
+      Height: =Parent.Height - 388
+      TemplateSize: =30
+      Visible: =!IsEmpty(Filter(tblRebar, 'Design ID' = gblSel.ID))
+    Children:
+      - lblBar:
+          Control: Label@2.5.1
+          Properties:
+            Text: =ThisItem.'Bar Mark' & "   " & ThisItem.Location & "   " & ThisItem.'Bar Type' & ThisItem.'Dia (mm)' & If(IsBlank(ThisItem.'Spacing (mm)'), "", " @ " & ThisItem.'Spacing (mm)') & "   L " & ThisItem.'Bar Length incl. Laps (m)' & " m   " & ThisItem.'Weight (kg/unit)' & " kg"
+            Size: =10
+            X: =4
+            Y: =2
+            Width: =Parent.TemplateWidth - 8
+            Height: =26
