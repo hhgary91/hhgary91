@@ -112,6 +112,10 @@ srows = [
     ("lkV", "Basic wind speed for linkway and fixings", 22, "m/s", "LTA SDRE Ch.22 notes; SS EN 1991-1-4", "VERIFY"),
     ("lkP", "Roof fixing ultimate pull-out capacity", 4.0, "kN", "LTA SDRE Ch.22 notes", "VERIFY"),
     ("lkC", "Min RC grade for linkway stumps / footings", 25, "MPa", "LTA SDRE Ch.22 notes (C25/30)", "VERIFY"),
+    ("sec", "LIBRARY DATA QUALITY"),
+    ("revw", "Review interval for standard designs", 3, "years", "Company rule: re-check designs against current codes", "SET"),
+    ("rtol", "Allowed difference, register rebar vs rebar schedule", 0.05, "", "Company rule", "SET"),
+    ("cplt", "Data completeness needed before Approved", 1.0, "", "Company rule (1.0 = all required fields)", "SET"),
 ]
 r = 4
 for row in srows:
@@ -204,6 +208,17 @@ lists = {
     "Unit": [("m", ""), ("nr", ""), ("bay", ""), ("span", ""), ("m2", "")],
     "Grade": [("C25/30", ""), ("C28/35", ""), ("C30/37", ""), ("C32/40", ""), ("C35/45", ""), ("C40/50", "")],
     "Scale": [(10, ""), (20, ""), (25, ""), (50, ""), (100, "")],
+    "Exposure": [("XC1", ""), ("XC2", ""), ("XC3", ""), ("XC4", ""), ("XD1", ""), ("XD2", ""), ("XD3", ""), ("XS1", ""),
+                 ("XS2", ""), ("XS3", ""), ("XA1", ""), ("XA2", ""), ("XA3", "")],
+    "RebarGrade": [("B500B (SS 560)", ""), ("B500C (SS 560)", ""), ("B485 mesh (SS 561)", ""), ("Grade 250 mild steel", "")],
+    "Authority": [("PUB", ""), ("LTA", ""), ("BCA", ""), ("HDB", ""), ("JTC", ""), ("NParks", ""), ("SLA", ""), ("Private", "")],
+    "Approach": [("DA1-C1 & C2", ""), ("DA1-C1", ""), ("DA1-C2", ""), ("Allowable stress (legacy)", "")],
+    "EN124": [("A15", ""), ("B125", ""), ("C250", ""), ("D400", ""), ("E600", ""), ("F900", "")],
+    "Install": [("Vibro hammer", ""), ("Silent piler (press-in)", ""), ("Bored / RCD", ""), ("Grab / hydrofraise", ""), ("Excavator placed", "")],
+    "BarLoc": [("Wall inner face", ""), ("Wall outer face", ""), ("Base top", ""), ("Base bottom", ""), ("Top slab top", ""),
+               ("Top slab bottom", ""), ("Stem back face", ""), ("Stem front face", ""), ("Toe", ""), ("Heel", ""),
+               ("Distribution", ""), ("Pile cage main", ""), ("Pile links / spiral", ""), ("Capping beam", ""), ("Links", ""), ("Others", "")],
+    "BarType": [("T", ""), ("R", ""), ("Mesh", "")],
 }
 wl = wb.create_sheet("Lists")
 wl["A1"] = "Dropdown lists. Add new items in the blank rows under a list; codes feed the Design IDs."
@@ -235,11 +250,67 @@ def vlk(cell, lst):
     return f'IFERROR(VLOOKUP({cell},{ranges[lst][1]},2,0),"??")'
 
 
+def dv_range(ws, rng_, ref, msg="Pick from the list."):
+    dv = DataValidation(type="list", formula1="=" + rng_, allow_blank=True)
+    dv.error, dv.errorTitle = msg, "Not in list"
+    ws.add_data_validation(dv)
+    dv.add(ref)
+
+
+# =============================================================== Projects (source projects for extracted designs)
+PJ = wb.create_sheet("Projects")
+PJ["A1"] = "Source Projects: past projects that library designs were taken from"
+PJ["A1"].font = f_title
+PJ["A2"] = "One row per past project. Registers pick the Project Ref from here, so name, client and authority are typed once."
+PJ["A2"].font = f_sub
+PJ["A3"] = "Green-shaded rows = EXAMPLE data."
+PJ["A3"].font = f_sub
+PJH = [("Project Ref", 12), ("Project Name", 44), ("Client", 22), ("Approving Authority", 12), ("Contract / Tender No.", 18),
+       ("Year Completed", 9), ("Location", 22), ("QP (Structural)", 18), ("QP (Geotechnical)", 18), ("Main Contractor", 20),
+       ("Drawings Folder (past project)", 46), ("Remarks", 30)]
+for c, (h, w) in enumerate(PJH, 1):
+    cell = PJ.cell(HDR, c, h)
+    cell.font, cell.alignment, cell.border, cell.fill = f_hdr, wrap, box, fill_hdr["in"]
+    PJ.column_dimensions[L(c)].width = w
+    for r in range(FIRST, FIRST + 500):
+        PJ.cell(r, c).border, PJ.cell(r, c).font, PJ.cell(r, c).fill = box, f_in, fill_in
+PJ.row_dimensions[HDR].height = 40
+pj_ex = [("EX-P001", "EXAMPLE Road upgrading at Jalan Contoh", "EXAMPLE client", "LTA", "EX/2023/001", 2023, "Jalan Contoh", "EXAMPLE QP", "", "EXAMPLE Contractor", r"P:\Projects\EX-P001\Drawings", ""),
+         ("EX-P002", "EXAMPLE Sewer renewal, Sector 12", "EXAMPLE client", "PUB", "EX/2024/014", 2024, "Sector 12", "EXAMPLE QP", "EXAMPLE QP (Geo)", "EXAMPLE Contractor", r"P:\Projects\EX-P002\Drawings", ""),
+         ("EX-P003", "EXAMPLE Industrial development, Tuas", "EXAMPLE client", "Private", "EX/2022/007", 2022, "Tuas", "EXAMPLE QP", "", "EXAMPLE Contractor", r"P:\Projects\EX-P003\Drawings", "")]
+for k, row in enumerate(pj_ex):
+    for c, v in enumerate(row, 1):
+        PJ.cell(FIRST + k, c, v).fill = fill_ex
+dv_list(PJ, "Authority", f"D{FIRST}:D{FIRST+499}")
+t = Table(displayName="tblProjects", ref=f"A{HDR}:{L(len(PJH))}{FIRST+499}")
+t.tableStyleInfo = TableStyleInfo(name="TableStyleLight1", showRowStripes=False)
+PJ.add_table(t)
+PJ.freeze_panes = "B5"
+PJ_IDS = f"Projects!$A${FIRST}:$A${FIRST+499}"
+PJ_TBL = f"Projects!$A${FIRST}:$D${FIRST+499}"
+RB_FIRST, RB_LAST = 5, 2004
+RB_ID, RB_KG = f"Rebar_Schedule!$A${RB_FIRST}:$A${RB_LAST}", f"Rebar_Schedule!$K${RB_FIRST}:$K${RB_LAST}"
+
 # =============================================================== register machinery
 REGS = []  # (sheet, idx, label, keycol)
+REQ = {}   # sheet -> required field names
+REGCOLS = {}
 
 
-def build_register(title, sheetname, note, cols, examples, tname, label):
+def build_register(title, sheetname, note, cols, examples, tname, label, required=()):
+    cols = list(cols)
+    cols.insert(2, ("Keywords / Tags", "in", 24, {}))
+    names = [c[0] for c in cols]
+    req = [h for h in required]
+    missing = [h for h in req if h not in names and h not in ("Source Project Ref",)]
+    assert not missing, (sheetname, missing)
+    REQ[sheetname] = req
+
+    def compl(r, i):
+        parts = "+".join(f'IF(LEN({i[h]}{r})>0,1,0)' for h in req)
+        return f'=IF({i["Design ID"]}{r}="","",ROUND(({parts})/{len(req)},2))'
+    pos = next((k for k, c in enumerate(cols) if c[0] == "Selectable"), len(cols))
+    cols.insert(pos, ("Data Completeness", "calc", 9, {"formula": compl, "fmt": "0%"}))
     ws = wb.create_sheet(sheetname)
     ws["A1"], ws["A2"] = title, note
     ws["A1"].font, ws["A2"].font = f_title, f_sub
@@ -278,14 +349,20 @@ def build_register(title, sheetname, note, cols, examples, tname, label):
     t.tableStyleInfo = TableStyleInfo(name="TableStyleLight1", showRowStripes=False)
     ws.add_table(t)
     ws.sheet_view.zoomScale = 90
-    for h in ("SG Compliance Check", "BCA ERSS Submission (indicative)"):
+    for h in ("SG Compliance Check", "BCA ERSS Submission (indicative)", "Data Check (rebar vs schedule)", "Review Status"):
         if h in idx:
             c = idx[h]
             rg = f"{c}{FIRST}:{c}{LAST}"
             ws.conditional_formatting.add(rg, FormulaRule(formula=[f'ISNUMBER(SEARCH("FAIL",{c}{FIRST}))'], fill=fill_red))
             ws.conditional_formatting.add(rg, FormulaRule(formula=[f'ISNUMBER(SEARCH("NOTE",{c}{FIRST}))'], fill=fill_amb))
             ws.conditional_formatting.add(rg, FormulaRule(formula=[f'{c}{FIRST}="OK"'], fill=fill_grn))
+    c = idx["Data Completeness"]
+    rg = f"{c}{FIRST}:{c}{LAST}"
+    ws.conditional_formatting.add(rg, FormulaRule(formula=[f'AND({c}{FIRST}<>"",{c}{FIRST}<{S["cplt"]})'], fill=fill_amb))
+    ws.conditional_formatting.add(rg, FormulaRule(formula=[f'AND({c}{FIRST}<>"",{c}{FIRST}>={S["cplt"]})'], fill=fill_grn))
+    dv_range(ws, PJ_IDS, f'{idx["Source Project Ref"]}{FIRST}:{idx["Source Project Ref"]}{LAST}', "Pick a Project Ref from the Projects sheet (add the project there first).")
     REGS.append((sheetname, idx, label))
+    REGCOLS[sheetname] = cols
     return ws, idx
 
 
@@ -361,21 +438,64 @@ def file_cols(folder_key):
 QTY = ["Concrete (m3/unit)", "Rebar (kg/unit)", "Steel (kg/unit)", "Formwork (m2/unit)", "Excavation (m3/unit)"]
 
 
+def _rb_sched(r, i):
+    return f'=IF({i["Design ID"]}{r}="","",IF(COUNTIF({RB_ID},{i["Design ID"]}{r})=0,"",ROUND(SUMIF({RB_ID},{i["Design ID"]}{r},{RB_KG}),1)))'
+
+
+def _rb_check(r, i):
+    a, b = f'{i["Rebar (kg/unit)"]}{r}', f'{i["Rebar from Schedule (kg/unit)"]}{r}'
+    return (f'=IF({i["Design ID"]}{r}="","",IF({b}="","No rebar schedule yet",IF(ABS({b}-N({a}))/MAX(N({a}),1)>{S["rtol"]},'
+            f'"NOTE: register rebar differs from schedule by "&TEXT(ABS({b}-N({a}))/MAX(N({a}),1),"0%"),"OK")))')
+
+
 def qty_cols():
-    return [("Qty Unit", "in", 6, {"dv": "Unit"})] + [(h, "qty", 9, {"fmt": "0.00"}) for h in QTY]
+    return ([("Qty Unit", "in", 6, {"dv": "Unit"})] + [(h, "qty", 9, {"fmt": "0.00"}) for h in QTY] +
+            [("Rebar from Schedule (kg/unit)", "calc", 10, {"formula": _rb_sched, "fmt": "0.0"}),
+             ("Data Check (rebar vs schedule)", "calc", 22, {"formula": _rb_check})])
 
 
 def admin_cols(head):
-    return [("Code Basis", "in", 30, {}), ("Rev", "in", 5, {}), ("Status", "in", 10, {"dv": "Status"}),
-            ("Drawing No.", "in", 14, {})]
+    return [("Exposure Class", "in", 7, {"dv": "Exposure"}), ("Design Life (years)", "in", 7, {"fmt": "0"}),
+            ("Rebar Grade", "in", 13, {"dv": "RebarGrade"}), ("Crack Width Limit (mm)", "in", 7, {"fmt": "0.00"}),
+            ("Code Basis", "in", 30, {}), ("Criteria Edition Used", "in", 28, {}), ("Rev", "in", 5, {}),
+            ("Status", "in", 10, {"dv": "Status"}), ("Drawing No.", "in", 14, {})]
 
 
-TAIL = [("Limitations / Notes", "in", 36, {}), ("Projects / Tenders Used", "in", 22, {}), ("Designer", "in", 10, {}),
-        ("Checker", "in", 10, {}), ("Approved By (QP)", "in", 11, {}), ("Approval Date", "in", 11, {"fmt": "dd-mmm-yy"})]
+def _pj(colno):
+    return lambda r, i: f'=IF({i["Source Project Ref"]}{r}="","",IFERROR(VLOOKUP({i["Source Project Ref"]}{r},{PJ_TBL},{colno},0),"Ref not in Projects"))'
 
 
-def ex_common(rev, status, dwg, scale, staad, unit, q, lim, cb, proj=""):
+def _next_review(r, i):
+    return f'=IF({i["Last Reviewed"]}{r}="","",EDATE({i["Last Reviewed"]}{r},{S["revw"]}*12))'
+
+
+def _review_status(r, i):
+    return (f'=IF({i["Design ID"]}{r}="","",IF({i["Last Reviewed"]}{r}="","NOTE: not reviewed yet",'
+            f'IF(TODAY()>{i["Next Review Due"]}{r},"NOTE: review overdue","OK")))')
+
+
+TAIL = [("Limitations / Notes", "in", 36, {}), ("Projects / Tenders Used", "in", 22, {}),
+        ("Source Project Ref", "in", 11, {}), ("Source Project Name", "calc", 30, {"formula": _pj(2)}),
+        ("Source Authority", "calc", 10, {"formula": _pj(4)}), ("Source Drawing No(s).", "in", 22, {}),
+        ("Source Report & Page", "in", 22, {}), ("Extracted By", "in", 11, {}), ("Extraction Date", "in", 11, {"fmt": "dd-mmm-yy"}),
+        ("Data Verified By", "in", 11, {}), ("Data Verified Date", "in", 11, {"fmt": "dd-mmm-yy"}),
+        ("Authority Approval Ref", "in", 18, {}), ("Authority Approval Date", "in", 11, {"fmt": "dd-mmm-yy"}),
+        ("Designer", "in", 10, {}), ("Checker", "in", 10, {}), ("Approved By (QP)", "in", 11, {}),
+        ("Approval Date", "in", 11, {"fmt": "dd-mmm-yy"}), ("Last Reviewed", "in", 11, {"fmt": "dd-mmm-yy"}),
+        ("Next Review Due", "calc", 11, {"formula": _next_review, "fmt": "dd-mmm-yy"}),
+        ("Review Status", "calc", 18, {"formula": _review_status})]
+
+
+CRIT_ED = "PUB COP SWD 7th Ed Add.3 (2025); LTA SDRE Rev I (2026)"
+
+
+def ex_common(rev, status, dwg, scale, staad, unit, q, lim, cb, proj="", src="EX-P001", tags="", exp="XC4", life=100, ed=CRIT_ED):
     d = {"Rev": rev, "Status": status, "Drawing No.": dwg, "Detail Scale (1:n)": scale,
+         "Keywords / Tags": tags, "Exposure Class": exp, "Design Life (years)": life, "Rebar Grade": "B500B (SS 560)",
+         "Crack Width Limit (mm)": 0.3, "Criteria Edition Used": ed, "Source Project Ref": src,
+         "Source Drawing No(s).": f"EXAMPLE {src}-C-{dwg[-3:]}", "Source Report & Page": "EXAMPLE design report, p.12",
+         "Extracted By": "EXAMPLE", "Extraction Date": TODAY, "Data Verified By": "EXAMPLE", "Data Verified Date": TODAY,
+         "Authority Approval Ref": "EXAMPLE ref" if status == "Approved" else "", "Last Reviewed": TODAY,
          "STAAD.Pro Model? (Y/N)": "Y" if staad else "N", "Files Checked in Folder (Y/N)": "N", "Qty Unit": unit,
          "Limitations / Notes": "EXAMPLE. " + lim, "Projects / Tenders Used": proj, "Code Basis": cb,
          "Designer": "EXAMPLE", "Checker": "EXAMPLE", "Approved By (QP)": "EXAMPLE", "Approval Date": TODAY}
@@ -435,7 +555,10 @@ drain_cols = [
     ("No. of Cells", "in", 6, {"fmt": "0"}), ("Wall Thk (mm)", "in", 7, {"fmt": "0"}), ("Base Thk (mm)", "in", 7, {"fmt": "0"}),
     ("Top Slab Thk (mm)", "in", 7, {"fmt": "0"}), ("Loading", "in", 20, {"dv": "Loading"}),
     ("Fill over Top / Surcharge", "in", 14, {}), ("Concrete Grade", "in", 8, {"dv": "Grade"}), ("Cover (mm)", "in", 7, {"fmt": "0"}),
-    ("Wall Main Bar", "in", 10, {}), ("Base Main Bar", "in", 10, {}), ("Top Slab Bar", "in", 10, {}), ("Distribution Bar", "in", 10, {}),
+    ("Wall Main Bar", "in", 10, {}), ("Wall Outer Face Bar", "in", 10, {}), ("Base Main Bar", "in", 10, {}), ("Top Slab Bar", "in", 10, {}),
+    ("Distribution Bar", "in", 10, {}), ("Grating / Cover Load Class (EN 124)", "in", 9, {"dv": "EN124"}),
+    ("Grating / Cover Size (mm)", "in", 12, {}), ("Precast Unit Length (mm)", "in", 8, {}), ("Movement Joint Spacing (m)", "in", 8, {}),
+    ("Gradient Range (1:S)", "in", 11, {}), ("Bedding / Backfill", "in", 18, {}), ("Uplift FOS", "in", 7, {"fmt": "0.00"}),
     *admin_cols("Drain"), *file_cols("f_dr"), *qty_cols(),
     ("Flow Capacity Q (m3/s)", "calc", 10, {"formula": d_q, "fmt": "0.000"}),
     ("Velocity at Capacity (m/s)", "calc", 9, {"formula": d_v, "fmt": "0.00"}),
@@ -452,7 +575,14 @@ def dr(t, cat, cov, w, d, cells, wt, bt, ts, load, fill, grade, cvr, wbar, bbar,
     e = {"Drain Type": t, "Category": cat, "Open / Covered": cov, WD: w, DD: d, "No. of Cells": cells, "Wall Thk (mm)": wt,
          "Base Thk (mm)": bt, "Top Slab Thk (mm)": ts, "Loading": load, "Fill over Top / Surcharge": fill, "Concrete Grade": grade,
          "Cover (mm)": cvr, "Wall Main Bar": wbar, "Base Main Bar": bbar, "Top Slab Bar": tbar, "Distribution Bar": dbar}
-    e.update(ex_common(rev, stt, dwg, scale, staad, unit, q, lim, cb, proj))
+    pre = t.startswith("Precast")
+    e.update({"Wall Outer Face Bar": wbar, "Grating / Cover Load Class (EN 124)": {VEH: "D400", FWY: "C250"}.get(load, "B125") if "grating" in cov else "",
+              "Grating / Cover Size (mm)": f"{w} x 1000" if "grating" in cov else "", "Precast Unit Length (mm)": 1200 if pre else "",
+              "Movement Joint Spacing (m)": "" if pre else 10, "Gradient Range (1:S)": "1:200 - 1:1000",
+              "Bedding / Backfill": "75 lean conc. C12/15; granular backfill", "Uplift FOS": 1.2 if "Culvert" in t else None})
+    tags = {"Box Culvert": "culvert crossing road vehicular", "Sump": "sump chamber", "Drop Inlet Chamber": "DIC kerb inlet"}.get(t, "drain")
+    e.update(ex_common(rev, stt, dwg, scale, staad, unit, q, lim, cb, proj, src="EX-P001", tags=tags, exp="XC4",
+                       life=120 if "Culvert" in t else 100))
     return e
 
 
@@ -462,7 +592,7 @@ drain_ex = [
     dr("Slabbed-over U-Drain", "Roadside drain", "Covered - RC slab", 600, 750, 1, 125, 125, 125, FWY, "Footway 5 kPa", "C32/40", 40, "T10@150", "T10@150", "T10@150", "T10@200", "A", "Approved", "STD-DR-003", 20, False, "m", (.43, 38, 0, 2.6, 1.8), "Under footway only."),
     dr("Cast-in-situ Open Drain", "Outlet / main drain", "Open", 1200, 1200, 1, 200, 200, None, S12, "12 kPa", "C32/40", 50, "T13@150", "T13@150", "-", "T10@200", "A", "Approved", "STD-DR-004", 25, False, "m", (.72, 72, 0, 4.8, 3.6), "D > 1.0 m: add railing STD-RLG-001."),
     dr("Cast-in-situ Open Drain", "Outlet / main drain", "Open", 2000, 1800, 1, 250, 300, None, S12, "12 kPa", "C32/40", 50, "T16@150", "T16@150", "-", "T13@200", "A", "Checked", "STD-DR-005", 25, True, "m", (1.65, 150, 0, 7.2, 7.0), "Awaiting QP approval."),
-    dr("Box Culvert", "Road crossing culvert", "Closed (culvert)", 1500, 1200, 1, 250, 250, 250, VEH, "0.5 - 2.0 m fill", "C32/40", 50, "T16@150", "T16@150", "T16@150", "T13@200", "A", "Approved", "STD-BC-001", 25, True, "m", (1.88, 210, 0, 7.4, 6.5), "STAAD frame: LM1 + earth pressure.", CB_CUL, "EXAMPLE Tender T-2026-01"),
+    dr("Box Culvert", "Road crossing culvert", "Closed (culvert)", 1500, 1200, 1, 250, 250, 250, VEH, "0.5 - 2.0 m fill", "C32/40", 50, "T16@150", "T16@150", "T16@150", "T13@200", "A", "Approved", "STD-BC-001", 25, True, "m", (1.88, 213, 0, 7.4, 6.5), "STAAD frame: LM1 + earth pressure.", CB_CUL, "EXAMPLE Tender T-2026-01"),
     dr("Box Culvert", "Road crossing culvert", "Closed (culvert)", 2400, 1800, 2, 300, 300, 300, VEH, "0.5 - 2.0 m fill", "C32/40", 50, "T20@150", "T20@150", "T20@150", "T13@200", "A", "Approved", "STD-BC-002", 50, True, "m", (5.2, 610, 0, 20.5, 16.0), "Twin cell.", CB_CUL),
     dr("Entrance Culvert", "Entrance culvert", "Covered - grating", 600, 600, 1, 150, 150, None, VEH, "Heavy duty grating", "C32/40", 40, "T13@150", "T13@150", "-", "T10@200", "A", "Approved", "STD-EC-001", 20, False, "m", (.41, 45, 0, 2.9, 1.9), "Hinged heavy-duty grating."),
     dr("Common Drain", "Common drain", "Covered - grating", 450, 450, 1, 100, 100, None, FWY, "-", "C32/40", 40, "T10@200", "T10@200", "-", "T10@250", "A", "Approved", "STD-CMD-001", 20, False, "m", (.15, 12, 0, 1.9, .9), "Within development only."),
@@ -472,7 +602,9 @@ drain_ex = [
 ]
 wsd, di = build_register("Drainage Standard Design Register (Singapore)", "Drain_Register",
                          "Drains, culverts, sumps, chambers. Compliance uses SG_Criteria (PUB COP SWD, LTA SDRE). Quantities per Qty Unit.",
-                         drain_cols, drain_ex, "tblDrain", "Drain")
+                         drain_cols, drain_ex, "tblDrain", "Drain",
+                         ["Drain Type", "Category", "Open / Covered", WD, DD, "Wall Thk (mm)", "Base Thk (mm)", "Loading", "Concrete Grade",
+                          "Cover (mm)", "Wall Main Bar", "Base Main Bar", "Exposure Class", "Concrete (m3/unit)", "Rebar (kg/unit)", "Code Basis", "Rev", "Status", "Drawing No.", "Detail Scale (1:n)", "Qty Unit", "Source Project Ref", "Approved By (QP)"])
 
 # =============================================================== 2. RC / GRAVITY RETAINING WALLS
 RWH = "Retained Height (m)"
@@ -503,13 +635,17 @@ rw_cols = [
     ("Design ID", "calc", 28, {"formula": rw_id}), ("Description", "calc", 46, {"formula": rw_desc}),
     ("Wall Type", "in", 22, {"dv": "WallType"}), (RWH, "in", 8, {"fmt": "0.00"}), ("Surcharge (kPa)", "in", 8, {"fmt": "0"}),
     ("GWT Behind Wall (Y/N)", "in", 8, {"dv": "YN"}), ("Backfill Slope (deg)", "in", 7, {"fmt": "0"}),
-    ("Founding Soil", "in", 20, {"dv": "Soil"}), ("phi' (deg)", "in", 6, {"fmt": "0"}), ("gamma (kN/m3)", "in", 7, {"fmt": "0.0"}),
+    ("Founding Soil", "in", 20, {"dv": "Soil"}), ("Founding Soil Allowable Bearing (kPa)", "in", 8, {"fmt": "0"}),
+    ("Retained Soil phi' (deg)", "in", 6, {"fmt": "0"}), ("Retained Soil c' (kPa)", "in", 6, {"fmt": "0"}),
+    ("Retained Soil gamma (kN/m3)", "in", 7, {"fmt": "0.0"}), ("Design Approach", "in", 12, {"dv": "Approach"}),
     ("Stem Top Thk (mm)", "in", 7, {"fmt": "0"}), ("Stem Bottom Thk (mm)", "in", 7, {"fmt": "0"}),
     ("Base Width (mm)", "in", 7, {"fmt": "0"}), ("Toe (mm)", "in", 6, {"fmt": "0"}), ("Heel (mm)", "in", 6, {"fmt": "0"}),
     ("Base Thk (mm)", "in", 6, {"fmt": "0"}), ("Shear Key (mm)", "in", 7, {}), ("Concrete Grade", "in", 8, {"dv": "Grade"}),
-    ("Cover (mm)", "in", 6, {"fmt": "0"}), ("Stem Main Bar", "in", 10, {}), ("Base Main Bar", "in", 10, {}),
+    ("Cover (mm)", "in", 6, {"fmt": "0"}), ("Stem Main Bar", "in", 10, {}), ("Stem Front Face Bar", "in", 10, {}),
+    ("Base Main Bar", "in", 10, {}), ("Distribution Bar", "in", 10, {}), ("Movement Joint Spacing (m)", "in", 8, {}),
     ("Drainage (weepholes / filter)", "in", 16, {}), ("FOS Sliding", "in", 6, {"fmt": "0.00"}),
-    ("FOS Overturning", "in", 7, {"fmt": "0.00"}), ("Max Bearing (kPa)", "in", 7, {"fmt": "0"}),
+    ("FOS Overturning", "in", 7, {"fmt": "0.00"}), ("FOS Bearing", "in", 7, {"fmt": "0.00"}), ("Max Bearing (kPa)", "in", 7, {"fmt": "0"}),
+    ("Max Settlement (mm)", "in", 7, {"fmt": "0"}),
     *admin_cols("RW"), *file_cols("f_rw"), *qty_cols(),
     ("BCA ERSS Submission (indicative)", "calc", 22, {"formula": f_bca("Wall Type", RWH, lambda c: "OR(" + ",".join(f'{c("Wall Type")}="{t}"' for t in NONRC_RW) + ")")}),
     ("SG Compliance Check", "calc", 40, {"formula": f_comp("Wall Type", rw_parts)}),
@@ -523,11 +659,15 @@ FSC = "Firm/stiff clay (general)"
 
 def rw(t, h, q, gw, soil, phi, stt_, stb, B, toe, heel, bt, sbar, bbar, fs, fo, qb, rev, status, dwg, scale, staad, qq, lim):
     e = {"Wall Type": t, RWH: h, "Surcharge (kPa)": q, "GWT Behind Wall (Y/N)": gw, "Backfill Slope (deg)": 0,
-         "Founding Soil": soil, "phi' (deg)": phi, "gamma (kN/m3)": 19.0, "Stem Top Thk (mm)": stt_, "Stem Bottom Thk (mm)": stb,
+         "Founding Soil": soil, "Founding Soil Allowable Bearing (kPa)": 150 if soil == FSC else 250,
+         "Retained Soil phi' (deg)": phi, "Retained Soil c' (kPa)": 0, "Retained Soil gamma (kN/m3)": 19.0, "Design Approach": "DA1-C1 & C2",
+         "Stem Front Face Bar": "T13@250" if sbar != "-" else "-", "Distribution Bar": "T13@200" if sbar != "-" else "-",
+         "Movement Joint Spacing (m)": 15, "FOS Bearing": 2.5 if qb < 140 else 2.2, "Max Settlement (mm)": 20, "Stem Top Thk (mm)": stt_, "Stem Bottom Thk (mm)": stb,
          "Base Width (mm)": B, "Toe (mm)": toe, "Heel (mm)": heel, "Base Thk (mm)": bt, "Shear Key (mm)": "-",
          "Concrete Grade": "C32/40", "Cover (mm)": 50, "Stem Main Bar": sbar, "Base Main Bar": bbar,
          "Drainage (weepholes / filter)": "75 dia @ 1.5 m c/c + geotextile", "FOS Sliding": fs, "FOS Overturning": fo, "Max Bearing (kPa)": qb}
-    e.update(ex_common(rev, status, dwg, scale, staad, "m", qq, lim, CB_RW))
+    e.update(ex_common(rev, status, dwg, scale, staad, "m", qq, lim, CB_RW, src="EX-P003", tags="retaining wall slope platform",
+                       exp="XC4", ed="LTA CDC C&S A3 (2025); BCA ERSS req (2024)"))
     return e
 
 
@@ -538,7 +678,7 @@ rw_ex = [
     rw(CANT, 1.5, 25, "N", FSC, 26, 200, 250, 1650, 400, 1000, 300, "T13@200", "T13@200", 1.6, 2.3, 80, "A", "Approved", "STD-RW-002", 25, False, (.9, 66, 0, 3.6, 2.8), ""),
     rw(CANT, 2.0, 25, "N", FSC, 26, 200, 300, 2100, 500, 1300, 350, "T13@150", "T13@150", 1.5, 2.2, 95, "A", "Approved", "STD-RW-003", 25, False, (1.28, 94, 0, 4.7, 3.7), ""),
     rw(CANT, 2.5, 25, "N", FSC, 26, 200, 350, 2500, 600, 1550, 400, "T16@150", "T16@150", 1.5, 2.1, 110, "A", "Approved", "STD-RW-004", 25, False, (1.7, 128, 0, 5.8, 4.6), ""),
-    rw(CANT, 3.0, 25, "N", FSC, 26, 200, 400, 2950, 700, 1850, 450, "T16@125", "T16@150", 1.5, 2.0, 128, "A", "Approved", "STD-RW-005", 25, False, (2.2, 170, 0, 6.9, 5.7), ""),
+    rw(CANT, 3.0, 25, "N", FSC, 26, 200, 400, 2950, 700, 1850, 450, "T16@125", "T16@150", 1.5, 2.0, 128, "A", "Approved", "STD-RW-005", 25, False, (2.2, 199, 0, 6.9, 5.7), ""),
     rw(CANT, 3.5, 25, "N", FSC, 26, 250, 450, 3350, 800, 2100, 500, "T20@150", "T16@125", 1.5, 2.0, 142, "A", "Approved", "STD-RW-006", 50, False, (2.78, 222, 0, 8.0, 6.9), ""),
     rw(CANT, 3.0, 25, "Y", FSC, 26, 250, 450, 3300, 800, 2050, 500, "T20@150", "T20@150", 1.5, 2.0, 145, "A", "Approved", "STD-RW-007", 25, False, (2.58, 210, 0, 7.1, 6.4), "GWT at 1/2 H behind wall."),
     rw(CANT, 4.5, 25, "N", FSC, 26, 250, 550, 4100, 1000, 2550, 600, "T25@150", "T20@125", 1.5, 2.0, 170, "A", "Checked", "STD-RW-008", 50, True, (4.05, 345, 0, 10.2, 9.3), "Awaiting QP approval."),
@@ -547,7 +687,11 @@ rw_ex = [
 ]
 wsr, ri = build_register("RC & Gravity Retaining Wall Register (Singapore)", "RW_Register",
                          "Cantilever (toe & heel), L-wall (heel only), reverse L-wall (toe only), counterfort, gravity, block, gabion, MSE. Embedded walls (CBP, secant, sheet pile, D-wall) go in Embedded_Wall_Register.",
-                         rw_cols, rw_ex, "tblRW", "Ret. Wall")
+                         rw_cols, rw_ex, "tblRW", "Ret. Wall",
+                         ["Wall Type", RWH, "Surcharge (kPa)", "GWT Behind Wall (Y/N)", "Founding Soil", "Retained Soil phi' (deg)",
+                          "Stem Bottom Thk (mm)", "Base Width (mm)", "Base Thk (mm)", "Concrete Grade", "Cover (mm)", "Stem Main Bar",
+                          "Base Main Bar", "FOS Sliding", "FOS Overturning", "Max Bearing (kPa)", "Exposure Class", "Concrete (m3/unit)",
+                          "Rebar (kg/unit)", "Code Basis", "Rev", "Status", "Drawing No.", "Detail Scale (1:n)", "Qty Unit", "Source Project Ref", "Approved By (QP)"])
 
 # =============================================================== 3. EMBEDDED WALLS (permanent or temporary ERSS, linear)
 EXD = "Excavation Depth (m)"
@@ -582,8 +726,12 @@ ew_cols = [
     ("Toe Embedment (m)", "in", 8, {"fmt": "0.0"}), ("Pile / Wall Length (m)", "in", 8, {"fmt": "0.0"}),
     ("Main Bar / Cage", "in", 14, {}), ("Capping Beam (W x D mm)", "in", 12, {}), ("Waler Section", "in", 12, {}),
     ("Strut Section & Spacing", "in", 16, {}), ("Max Wall Deflection (mm)", "in", 8, {"fmt": "0"}),
-    ("Allowable Deflection (mm)", "in", 8, {"fmt": "0"}), ("Concrete Grade", "in", 8, {"dv": "Grade"}),
-    ("Instrumentation", "in", 18, {}), *admin_cols("EW"), *file_cols("f_ew"), *qty_cols(),
+    ("Allowable Deflection (mm)", "in", 8, {"fmt": "0"}), ("Max Bending Moment (kNm/m)", "in", 9, {"fmt": "0"}),
+    ("Max Shear (kN/m)", "in", 8, {"fmt": "0"}), ("Strut Force (kN/m)", "in", 8, {"fmt": "0"}), ("Strut Preload (% of design)", "in", 8, {}),
+    ("FOS Base Heave", "in", 7, {"fmt": "0.00"}), ("Design Approach", "in", 12, {"dv": "Approach"}),
+    ("Installation Method", "in", 16, {"dv": "Install"}), ("Concrete Grade", "in", 8, {"dv": "Grade"}),
+    ("Instrumentation", "in", 18, {}), ("Trigger Levels (Alert / WSL)", "in", 16, {}), ("Construction Sequence Ref", "in", 16, {}),
+    *admin_cols("EW"), *file_cols("f_ew"), *qty_cols(),
     ("BCA ERSS Submission (indicative)", "calc", 24, {"formula": f_bca("Wall Type", EXD, lambda c: f'{c("Wall Type")}="Soldier Pile & Timber Lagging"')}),
     ("SG Compliance Check", "calc", 42, {"formula": f_comp("Wall Type", ew_parts)}),
     *TAIL, ("Selectable", "calc", 8, {"formula": f_sel("Wall Type")}),
@@ -599,8 +747,14 @@ def ew(t, tp, d, sup, soil, gwt, q, sec, spc, th, toe, ln, bar, cap, wal, strut,
          "Wall Thk (mm)": th, "Toe Embedment (m)": toe, "Pile / Wall Length (m)": ln, "Main Bar / Cage": bar,
          "Capping Beam (W x D mm)": cap, "Waler Section": wal, "Strut Section & Spacing": strut,
          "Max Wall Deflection (mm)": dfl, "Allowable Deflection (mm)": adf, "Concrete Grade": "C32/40" if t != "Steel Sheet Pile" else "",
-         "Instrumentation": inst}
-    e.update(ex_common(rev, status, dwg, scale, staad, "m", qq, lim, CB_EW))
+         "Instrumentation": inst, "Max Bending Moment (kNm/m)": round(d * d * 9), "Max Shear (kN/m)": round(d * 28),
+         "Strut Force (kN/m)": round(d * 35) if "strut" in sup else None, "Strut Preload (% of design)": "50%" if "strut" in sup else "",
+         "FOS Base Heave": 1.6 if soil == KF else None, "Design Approach": "DA1-C1 & C2",
+         "Installation Method": "Silent piler (press-in)" if t == "Steel Sheet Pile" else ("Grab / hydrofraise" if t == "Diaphragm Wall" else "Bored / RCD"),
+         "Trigger Levels (Alert / WSL)": f"{round(adf*0.7)} / {round(adf*0.85)} mm" if adf else "", "Construction Sequence Ref": f"{dwg}-SEQ"}
+    e.update(ex_common(rev, status, dwg, scale, staad, "m", qq, lim, CB_EW, src="EX-P003", tags="ERSS basement excavation",
+                       exp="XC2" if tp == "Permanent" else "", life=120 if tp == "Permanent" else 2,
+                       ed="LTA CDC C&S A3 (2025); BCA ERSS req (2024)"))
     return e
 
 
@@ -613,7 +767,10 @@ ew_ex = [
 ]
 wse, ei = build_register("Embedded Retaining Wall / ERSS Register (Singapore)", "Embedded_Wall_Register",
                          "CBP, secant, sheet pile, diaphragm wall, soldier pile. Tabulated by excavation depth, support system and soil profile. Standard designs are tender-stage typicals for a soil profile class; site-specific design always required.",
-                         ew_cols, ew_ex, "tblEmbedded", "Embedded Wall")
+                         ew_cols, ew_ex, "tblEmbedded", "Embedded Wall",
+                         ["Wall Type", "Temporary / Permanent", EXD, "Support System", "Soil Profile", "GWT (m below ground)",
+                          "Pile Dia / Section", "Toe Embedment (m)", "Pile / Wall Length (m)", "Max Wall Deflection (mm)",
+                          "Allowable Deflection (mm)", "Max Bending Moment (kNm/m)", "Code Basis", "Rev", "Status", "Drawing No.", "Detail Scale (1:n)", "Qty Unit", "Source Project Ref", "Approved By (QP)"])
 
 # =============================================================== 4. SEWER MANHOLES (permanent)
 MHL, MHW, DMIN, DMAX, PIPE = "Internal Length / Dia (mm)", "Internal Width (mm)", "Min Depth (m)", "Max Depth (m)", "Max Incoming Pipe Dia (mm)"
@@ -647,7 +804,9 @@ mh_cols = [
     ("Manhole Type", "in", 26, {"dv": "MHType"}), ("Construction", "in", 11, {"dv": "Construct"}), ("Shape", "in", 10, {"dv": "Shape"}),
     (MHL, "in", 9, {"fmt": "0"}), (MHW, "in", 8, {"fmt": "0"}), (DMIN, "in", 7, {"fmt": "0.0"}), (DMAX, "in", 7, {"fmt": "0.0"}),
     (PIPE, "in", 8, {"fmt": "0"}), ("Wall Thk (mm)", "in", 7, {"fmt": "0"}), ("Base Thk (mm)", "in", 7, {"fmt": "0"}),
-    ("Roof Slab Thk (mm)", "in", 7, {"fmt": "0"}), ("Cover & Frame", "in", 16, {}), ("Access (step irons / ladder)", "in", 14, {}),
+    ("Roof Slab Thk (mm)", "in", 7, {"fmt": "0"}), ("Cover & Frame", "in", 16, {}), ("Cover Load Class (EN 124)", "in", 8, {"dv": "EN124"}),
+    ("Cover Opening Size (mm)", "in", 10, {}), ("Access (step irons / ladder)", "in", 14, {}), ("Ventilation", "in", 12, {}),
+    ("Waterproofing / Lining", "in", 16, {}), ("Precast Joint Type", "in", 14, {}), ("Design GWT (m below ground)", "in", 8, {"fmt": "0.0"}),
     ("Benching / Channel", "in", 14, {}), ("Loading", "in", 20, {"dv": "Loading"}), ("Uplift FOS", "in", 7, {"fmt": "0.00"}),
     ("Concrete Grade", "in", 8, {"dv": "Grade"}), ("Cover (mm)", "in", 6, {"fmt": "0"}), ("Wall Bar", "in", 10, {}),
     ("Base Bar", "in", 10, {}), ("Roof Slab Bar", "in", 10, {}), ("PUB Std Drawing Ref", "in", 16, {}),
@@ -665,8 +824,12 @@ def mh(t, cons, shp, l, w, dmin, dmax, pipe, wt, bt, rt, upl, wbar, bbar, rbar, 
          "Wall Thk (mm)": wt, "Base Thk (mm)": bt, "Roof Slab Thk (mm)": rt, "Cover & Frame": "Heavy duty DI, per PUB std",
          "Access (step irons / ladder)": "Step irons @ 300", "Benching / Channel": "Per PUB std", "Loading": VEH, "Uplift FOS": upl,
          "Concrete Grade": "C32/40", "Cover (mm)": 40, "Wall Bar": wbar, "Base Bar": bbar, "Roof Slab Bar": rbar,
-         "PUB Std Drawing Ref": ref, "Typical Temporary ERSS (Design ID)": erss}
-    e.update(ex_common(rev, status, dwg, scale, staad, "nr", qq, lim, CB_MH))
+         "PUB Std Drawing Ref": ref, "Typical Temporary ERSS (Design ID)": erss, "Cover Load Class (EN 124)": "D400",
+         "Cover Opening Size (mm)": "600 dia clear" if l < 1500 else "900 x 600", "Ventilation": "Per PUB std",
+         "Waterproofing / Lining": "Epoxy / HDPE lining (sewer gas)", "Precast Joint Type": "Rebated + sealant" if cons == "Precast" else "",
+         "Design GWT (m below ground)": 0.0}
+    e.update(ex_common(rev, status, dwg, scale, staad, "nr", qq, lim, CB_MH, src="EX-P002", tags="sewer manhole",
+                       exp="XA1", ed="PUB COP SSW 3rd Ed (2025); PUB/WRN/STD drawings"))
     return e
 
 
@@ -679,7 +842,10 @@ mh_ex = [
 ]
 wsm, mi = build_register("Sewer Manhole Register (Singapore, permanent)", "Manhole_Register",
                          "Permanent manholes per PUB COP SSW 3rd Ed and PUB/WRN/STD drawings. One row per size and depth range. Link the typical temporary ERSS pit design.",
-                         mh_cols, mh_ex, "tblManhole", "Manhole")
+                         mh_cols, mh_ex, "tblManhole", "Manhole",
+                         ["Manhole Type", "Construction", "Shape", MHL, DMIN, DMAX, PIPE, "Wall Thk (mm)", "Base Thk (mm)",
+                          "Roof Slab Thk (mm)", "Concrete Grade", "Cover (mm)", "Uplift FOS", "PUB Std Drawing Ref", "Exposure Class",
+                          "Concrete (m3/unit)", "Code Basis", "Rev", "Status", "Drawing No.", "Detail Scale (1:n)", "Qty Unit", "Source Project Ref", "Approved By (QP)"])
 
 # =============================================================== 5. TEMPORARY ERSS PITS (per nr)
 PL, PW = "Pit Plan Length (mm)", "Pit Plan Width (mm)"
@@ -712,8 +878,11 @@ ep_cols = [
     ("GWT (m below ground)", "in", 8, {"fmt": "0.0"}), ("Surcharge (kPa)", "in", 8, {"fmt": "0"}),
     ("Sheet Pile / Wall Section", "in", 14, {}), ("Pile Length (m)", "in", 7, {"fmt": "0.0"}), ("Toe Embedment (m)", "in", 7, {"fmt": "0.0"}),
     ("Strut Levels", "in", 6, {"fmt": "0"}), ("Waler Section", "in", 12, {}), ("Strut / Corner Brace", "in", 14, {}),
-    ("Base Stability FOS", "in", 7, {"fmt": "0.00"}), ("Dewatering / Grouting", "in", 16, {}),
-    ("Max Wall Deflection (mm)", "in", 8, {"fmt": "0"}), *admin_cols("EP"), *file_cols("f_ep"), *qty_cols(),
+    ("Base Stability FOS", "in", 7, {"fmt": "0.00"}), ("FOS Hydraulic Uplift", "in", 7, {"fmt": "0.00"}),
+    ("Max Bending Moment (kNm/m)", "in", 9, {"fmt": "0"}), ("Max Strut Force (kN)", "in", 8, {"fmt": "0"}),
+    ("Strut Preload (kN)", "in", 8, {"fmt": "0"}), ("Installation Method", "in", 16, {"dv": "Install"}),
+    ("Dewatering / Grouting", "in", 16, {}), ("Max Wall Deflection (mm)", "in", 8, {"fmt": "0"}),
+    ("Monitoring & Trigger Levels", "in", 18, {}), *admin_cols("EP"), *file_cols("f_ep"), *qty_cols(),
     ("BCA ERSS Submission (indicative)", "calc", 24, {"formula": f_bca("ERSS Type", EXD, lambda c: "OR(" + ",".join(f'{c("ERSS Type")}="{t}"' for t in NONRC_EP) + ")")}),
     ("SG Compliance Check", "calc", 44, {"formula": f_comp("ERSS Type", ep_parts)}),
     *TAIL, ("Selectable", "calc", 8, {"formula": f_sel("ERSS Type")}),
@@ -726,8 +895,13 @@ def ep(t, pur, l, w, d, soil, gwt, q, sec, ln, toe, lv, wal, strut, fos, dew, df
     e = {"ERSS Type": t, "Purpose": pur, PL: l, PW: w, EXD: d, "Soil Profile": soil, "GWT (m below ground)": gwt,
          "Surcharge (kPa)": q, "Sheet Pile / Wall Section": sec, "Pile Length (m)": ln, "Toe Embedment (m)": toe,
          "Strut Levels": lv, "Waler Section": wal, "Strut / Corner Brace": strut, "Base Stability FOS": fos,
-         "Dewatering / Grouting": dew, "Max Wall Deflection (mm)": dfl}
-    e.update(ex_common(rev, status, dwg, scale, staad, "nr", qq, lim, CB_EP))
+         "Dewatering / Grouting": dew, "Max Wall Deflection (mm)": dfl, "FOS Hydraulic Uplift": 1.3 if gwt and gwt < d else None,
+         "Max Bending Moment (kNm/m)": round(d * d * 7) if lv else None, "Max Strut Force (kN)": round(d * l / 1000 * 40) if lv else None,
+         "Strut Preload (kN)": round(d * l / 1000 * 20) if lv else None,
+         "Installation Method": "Silent piler (press-in)" if "Sheet" in t else ("Excavator placed" if "Box" in t else "Bored / RCD"),
+         "Monitoring & Trigger Levels": f"Inclinometer, piezometer; alert {round(dfl*0.7)} mm" if dfl else ""}
+    e.update(ex_common(rev, status, dwg, scale, staad, "nr", qq, lim, CB_EP, src="EX-P002", tags="temporary works sewer pit",
+                       exp="", life=2, ed="BCA ERSS req (2024); BCA sheet pile guideline (2025)"))
     return e
 
 
@@ -739,7 +913,9 @@ ep_ex = [
 ]
 wsp, pi = build_register("Temporary ERSS Pit Register (manholes, jacking / receiving pits, trenches)", "ERSS_Pit_Register",
                          "Temporary works for sewer manholes and pits, per nr. BCA submission route shown is indicative: QP to confirm per project.",
-                         ep_cols, ep_ex, "tblERSSPit", "ERSS Pit")
+                         ep_cols, ep_ex, "tblERSSPit", "ERSS Pit",
+                         ["ERSS Type", "Purpose", PL, PW, EXD, "Soil Profile", "GWT (m below ground)", "Sheet Pile / Wall Section",
+                          "Base Stability FOS", "Max Wall Deflection (mm)", "Code Basis", "Rev", "Status", "Drawing No.", "Detail Scale (1:n)", "Qty Unit", "Source Project Ref", "Approved By (QP)"])
 
 # =============================================================== 6. COVERED LINKWAY (LTA SDRE Ch.22)
 LKW_, LKH, LKB = "Roof Width, eave to eave (m)", "Clear Headroom (m)", "Bay / Column Spacing (m)"
@@ -774,7 +950,9 @@ lk_cols = [
     (LKW_, "in", 8, {"fmt": "0.0"}), (LKH, "in", 8, {"fmt": "0.0"}), (LKB, "in", 8, {"fmt": "0.0"}),
     ("Column Arrangement", "in", 18, {"dv": "LkCols"}), ("Column Section", "in", 14, {}), ("Roof Material", "in", 16, {"dv": "Roof"}),
     ("Roof Profile / Fall", "in", 12, {}), ("Gutter & Downpipe", "in", 14, {}), ("Footing Type", "in", 12, {}),
-    ("Footing Size (L x B x D mm)", "in", 14, {}), ("RC Stump (dia x H mm)", "in", 12, {}), ("Basic Wind Speed (m/s)", "in", 7, {"fmt": "0"}),
+    ("Footing Size (L x B x D mm)", "in", 14, {}), ("RC Stump (dia x H mm)", "in", 12, {}), ("Base Plate (mm)", "in", 12, {}),
+    ("Holding-down Bolts", "in", 12, {}), ("Max Column Moment (kNm)", "in", 8, {"fmt": "0.0"}), ("Roof Sheet Thk (mm)", "in", 7, {}),
+    ("Ceiling / Soffit", "in", 12, {}), ("Deflection Limit", "in", 9, {}), ("Basic Wind Speed (m/s)", "in", 7, {"fmt": "0"}),
     ("Roof Fixing Pull-out (kN)", "in", 7, {"fmt": "0.0"}), ("Concrete Grade", "in", 8, {"dv": "Grade"}),
     ("Demountable / Bolted (Y/N)", "in", 8, {"dv": "YN"}), ("Lighting Provision", "in", 12, {}),
     ("Roof Sheeting (m2/unit)", "in", 8, {"fmt": "0.0"}), *admin_cols("LK"), *file_cols("f_lk"), *qty_cols(),
@@ -790,8 +968,12 @@ def lk(t, ref, w, h, b, cols_, csec, roof, prof, fdn, fsize, stump, rev, status,
          "Roof Material": roof, "Roof Profile / Fall": prof, "Gutter & Downpipe": "Aluminium gutter, 100 dia DP", "Footing Type": fdn,
          "Footing Size (L x B x D mm)": fsize, "RC Stump (dia x H mm)": stump, "Basic Wind Speed (m/s)": 22,
          "Roof Fixing Pull-out (kN)": 4.0, "Concrete Grade": "C25/30", "Demountable / Bolted (Y/N)": "Y",
-         "Lighting Provision": "Conduit only", "Roof Sheeting (m2/unit)": sheet}
-    e.update(ex_common(rev, status, dwg, scale, staad, "bay", qq, lim, CB_LK))
+         "Lighting Provision": "Conduit only", "Roof Sheeting (m2/unit)": sheet,
+         "Base Plate (mm)": "300 x 300 x 20" if h < 3 else "400 x 400 x 25", "Holding-down Bolts": "4 nos M20 Gr 8.8" if h < 3 else "4 nos M24 Gr 8.8",
+         "Max Column Moment (kNm)": round(w * b * h * 0.45, 1), "Roof Sheet Thk (mm)": 0.9, "Ceiling / Soffit": "None (exposed)",
+         "Deflection Limit": "L/200"}
+    e.update(ex_common(rev, status, dwg, scale, staad, "bay", qq, lim, CB_LK, src="EX-P001", tags="linkway shelter MRT bus stop",
+                       exp="XC3", life=50, ed="LTA SDRE Rev I (2026) Ch.22"))
     return e
 
 
@@ -803,7 +985,10 @@ lk_ex = [
 ]
 wsl, li = build_register("Covered Linkway Register (LTA SDRE Ch.22)", "Linkway_Register",
                          "Follows LTA SDRE Rev I (Mar 2026) Chapter 22 Covered Linkway (CLW1 layout/elevations, CLW2 high linkway, CLW3-CLW5 modular). Quantities per bay.",
-                         lk_cols, lk_ex, "tblLinkway", "Linkway")
+                         lk_cols, lk_ex, "tblLinkway", "Linkway",
+                         ["Linkway Type", "SDRE Drawing Ref", LKW_, LKH, LKB, "Column Arrangement", "Column Section", "Roof Material",
+                          "Footing Type", "Footing Size (L x B x D mm)", "Basic Wind Speed (m/s)", "Roof Fixing Pull-out (kN)",
+                          "Concrete Grade", "Code Basis", "Rev", "Status", "Drawing No.", "Detail Scale (1:n)", "Qty Unit", "Source Project Ref", "Approved By (QP)"])
 
 # =============================================================== 7. OTHERS
 def ot_id(r, i):
@@ -834,7 +1019,8 @@ CB_OT = "LTA CDC C&S A3; LTA SDRE Rev I; SS EN 1990/1991/1993"
 def ot(fam, typ, sp, h, w, load, fdn, mat, mem, rev, stt, dwg, scale, staad, unit, qq, lim):
     e = {"Family": fam, "Type (short)": typ, "Span / Length (m)": sp, "Height / Rise (m)": h, "Width (m)": w,
          "Design Load": load, "Foundation": fdn, "Material": mat, "Key Members / Reinforcement": mem}
-    e.update(ex_common(rev, stt, dwg, scale, staad, unit, qq, lim, CB_OT))
+    e.update(ex_common(rev, stt, dwg, scale, staad, unit, qq, lim, CB_OT, src="EX-P001", tags=fam.lower(), exp="XC3",
+                       ed="LTA CDC C&S A3 (2025)"))
     return e
 
 
@@ -845,7 +1031,188 @@ ot_ex = [
     ot("POB", "Steel Truss with Lift", 30.0, 5.7, 3.0, "Crowd load; SS EN 1991-2", "Bored piles", "Steel truss", "Warren truss, CHS chords", "A", "WIP", "STD-POB-001", 100, True, "nr", (85, 6000, 46000, 210, 120), "Indicative only."),
 ]
 wso, oi = build_register("Other Structures Register", "Other_Register",
-                         "Railing, staircase, POB, USD, bus shelter and others.", ot_cols, ot_ex, "tblOther", "Others")
+                         "Railing, staircase, POB, USD, bus shelter and others.", ot_cols, ot_ex, "tblOther", "Others",
+                         ["Family", "Type (short)", "Design Load", "Material", "Code Basis", "Rev", "Status", "Drawing No.", "Detail Scale (1:n)", "Qty Unit", "Source Project Ref", "Approved By (QP)"])
+
+# =============================================================== REBAR SCHEDULE (per design, per unit)
+rb = wb.create_sheet("Rebar_Schedule")
+rb["A1"] = "Rebar Schedule: bars per design, per Qty Unit (per m run, per nr or per bay)"
+rb["A1"].font = f_title
+rb["A2"] = ("One row per bar mark. Weight = 0.00617 x dia^2 x length x number. Leave 'No. per Unit' blank to use 1000 / spacing (bars per metre run). "
+            "Each register compares its 'Rebar (kg/unit)' with the total here.")
+rb["A2"].font = f_sub
+rb["A3"] = "Green-shaded rows = EXAMPLE data."
+rb["A3"].font = f_sub
+RBH = [("Design ID", "in", 34), ("Bar Mark", "in", 7), ("Location", "in", 18), ("Bar Type", "in", 6), ("Dia (mm)", "in", 6),
+       ("Spacing (mm)", "in", 8), ("No. per Unit", "in", 8), ("Bar Length incl. Laps (m)", "in", 9), ("Shape Code (BS 8666)", "in", 9),
+       ("No. Used", "calc", 8), ("Weight (kg/unit)", "calc", 9), ("Remarks", "in", 24), ("ID Check", "calc", 18)]
+for c, (h, k, w) in enumerate(RBH, 1):
+    cell = rb.cell(HDR, c, h)
+    cell.font, cell.alignment, cell.border, cell.fill = f_hdr, wrap, box, fill_hdr[k]
+    rb.column_dimensions[L(c)].width = w
+rb.row_dimensions[HDR].height = 40
+id_hit = "+".join(f'COUNTIF({sh}!${ix["Design ID"]}${FIRST}:${ix["Design ID"]}${LAST},A{{r}})' for sh, ix, _ in REGS)
+for r in range(RB_FIRST, RB_LAST + 1):
+    for c, (h, k, w) in enumerate(RBH, 1):
+        cell = rb.cell(r, c)
+        cell.border, cell.font, cell.fill = box, (f_in if k == "in" else f_calc), (fill_in if k == "in" else fill_calc)
+    rb[f"J{r}"] = f'=IF(A{r}="","",IF(G{r}<>"",G{r},IF(N(F{r})>0,ROUND(1000/F{r},3),0)))'
+    rb[f"K{r}"] = f'=IF(OR(A{r}="",E{r}="",H{r}=""),"",ROUND(0.00617*E{r}^2*H{r}*J{r},2))'
+    rb[f"M{r}"] = f'=IF(A{r}="","",IF(({id_hit.format(r=r)})>0,"OK","ID not in any register"))'
+dv_list(rb, "BarLoc", f"C{RB_FIRST}:C{RB_LAST}")
+dv_list(rb, "BarType", f"D{RB_FIRST}:D{RB_LAST}")
+BC1, RW5 = "DRN-BC-1500x1200-VEH-A", "RW-CANT-H3000-S25-A"
+rb_ex = [(BC1, "B1", "Wall outer face", "T", 16, 150, None, 7.6, "Loop (lapped)", "Outer face, walls + slabs"),
+         (BC1, "B2", "Wall inner face", "T", 16, 150, None, 6.0, "Loop (lapped)", "Inner face, walls + slabs"),
+         (BC1, "B3", "Distribution", "T", 13, None, 64, 1.05, "00", "Longitudinal, both faces"),
+         (RW5, "R1", "Stem back face", "T", 16, 125, None, 4.2, "11", "Main tension bars"),
+         (RW5, "R2", "Stem front face", "T", 13, 250, None, 3.6, "11", ""),
+         (RW5, "R3", "Base bottom", "T", 16, 150, None, 3.1, "21", ""),
+         (RW5, "R4", "Base top", "T", 16, 150, None, 3.1, "21", ""),
+         (RW5, "R5", "Distribution", "T", 13, None, 30, 1.05, "00", "Stem, both faces"),
+         (RW5, "R6", "Distribution", "T", 13, None, 30, 1.05, "00", "Base, both faces")]
+for k, row in enumerate(rb_ex):
+    r = RB_FIRST + k
+    for c, v in zip("ABCDEFGHIL", row):
+        rb[f"{c}{r}"] = v
+        rb[f"{c}{r}"].fill = fill_ex
+t = Table(displayName="tblRebar", ref=f"A{HDR}:{L(len(RBH))}{RB_LAST}")
+t.tableStyleInfo = TableStyleInfo(name="TableStyleLight1", showRowStripes=False)
+rb.add_table(t)
+rb.freeze_panes = "B5"
+
+# =============================================================== REVISION LOG
+rv = wb.create_sheet("Revision_Log")
+rv["A1"] = "Revision Log: what changed between revisions of a standard design"
+rv["A1"].font = f_title
+rv["A2"] = "Add a row every time a design is revised. The old revision stays in its register with Status = Superseded."
+rv["A2"].font = f_sub
+RVH = [("Design ID (new rev)", 34), ("Superseded Design ID", 34), ("Rev", 5), ("Date", 11), ("Change Description", 50),
+       ("Reason", 26), ("Changed By", 12), ("Checked By", 12), ("Approved By (QP)", 14)]
+for c, (h, w) in enumerate(RVH, 1):
+    cell = rv.cell(HDR, c, h)
+    cell.font, cell.alignment, cell.border, cell.fill = f_hdr, wrap, box, fill_hdr["in"]
+    rv.column_dimensions[L(c)].width = w
+    for r in range(FIRST, FIRST + 500):
+        rv.cell(r, c).border, rv.cell(r, c).font, rv.cell(r, c).fill = box, f_in, fill_in
+        if c == 4:
+            rv.cell(r, c).number_format = "dd-mmm-yy"
+rv_ex = [(BC1, "", "A", TODAY, "First issue to library (extracted from EX-P001).", "New standard design", "EXAMPLE", "EXAMPLE", "EXAMPLE"),
+         ("DRN-PUD-0600x0600-S12-A", "", "A", TODAY, "First issue to library.", "New standard design", "EXAMPLE", "EXAMPLE", "EXAMPLE")]
+for k, row in enumerate(rv_ex):
+    for c, v in enumerate(row, 1):
+        rv.cell(FIRST + k, c, v).fill = fill_ex
+t = Table(displayName="tblRevisions", ref=f"A{HDR}:{L(len(RVH))}{FIRST+499}")
+t.tableStyleInfo = TableStyleInfo(name="TableStyleLight1", showRowStripes=False)
+rv.add_table(t)
+rv.freeze_panes = "B5"
+
+
+# =============================================================== DATA DICTIONARY
+def group_of(h, kind, ex):
+    if h in ("Design ID", "Description", "Keywords / Tags"):
+        return "Identification"
+    if h in ("Selectable", "Selector Key"):
+        return "Internal (selector)"
+    if ex.get("file") or h in ("Detail Scale (1:n)", "STAAD.Pro Model? (Y/N)", "Files Checked in Folder (Y/N)"):
+        return "Files"
+    if h in QTY or h in ("Qty Unit", "Rebar from Schedule (kg/unit)", "Data Check (rebar vs schedule)", "Roof Sheeting (m2/unit)"):
+        return "Quantities"
+    if h in ("Code Basis", "Criteria Edition Used", "Rev", "Status", "Drawing No.", "Limitations / Notes", "Projects / Tenders Used",
+             "Designer", "Checker", "Approved By (QP)", "Approval Date", "Last Reviewed", "Next Review Due", "Review Status",
+             "Data Completeness") or h.startswith(("Source", "Extract", "Data Verified", "Authority Approval")):
+        return "Source, Approval & Review"
+    if h in ("Concrete Grade", "Cover (mm)", "Exposure Class", "Design Life (years)", "Rebar Grade", "Crack Width Limit (mm)"):
+        return "Materials & Durability"
+    if any(k in h for k in ("Bar", "Cage", "Mesh")):
+        return "Reinforcement"
+    if any(k in h for k in ("FOS", "Compliance", "BCA", "Capacity", "Velocity", "Deflection", "Moment", "Shear", "Force",
+                            "Max Bearing", "Settlement", "Preload", "Trigger", "Monitoring", "Instrumentation")):
+        return "Design Results & Checks"
+    if any(k in h for k in ("Thk", "Width", "Length", "Depth", "Height", "Toe", "Heel", "Spacing", "Size", "Dia", "Cells",
+                            "Span", "Headroom", "Stump", "Plate", "Bolts", "Section", "Beam", "Key", "Levels", "Slope")):
+        return "Geometry & Members"
+    return "Design Basis"
+
+
+DESC = {
+    "Design ID": "Unique ID built from the key parameters and revision. Used for file names and in the title block.",
+    "Description": "Readable summary built from the key fields.",
+    "Keywords / Tags": "Free words to help searching (e.g. 'MRT', 'industrial', 'Tuas').",
+    "Status": "WIP / Checked / Approved / Superseded. Only Approved and SG-compliant designs are offered by the selector.",
+    "Code Basis": "Codes and standards the design was done to.",
+    "Criteria Edition Used": "Edition / revision of PUB, LTA, BCA documents used. Compare with SG_Criteria to see if a design is out of date.",
+    "Exposure Class": "SS EN 1992 / SS EN 206 exposure class used for cover and durability.",
+    "Design Life (years)": "Design working life assumed.",
+    "Rebar Grade": "Reinforcement grade, normally B500B to SS 560.",
+    "Crack Width Limit (mm)": "Crack width limit used in SLS check.",
+    "Detail Scale (1:n)": "Scale the tender detail is drawn for. TPSHEETS inserts it at 1/n on the sheet.",
+    "STAAD.Pro Model? (Y/N)": "Y if a STAAD.Pro model exists for this design.",
+    "Files Checked in Folder (Y/N)": "Y once someone has confirmed all five files are in the design folder.",
+    "Qty Unit": "Unit the quantities are per: m (per metre run), nr, bay, span or m2.",
+    "Rebar from Schedule (kg/unit)": "Automatic total from Rebar_Schedule.",
+    "Data Check (rebar vs schedule)": "Flags when register rebar and schedule total differ by more than the SG_Criteria tolerance.",
+    "SG Compliance Check": "Automatic check against SG_Criteria. FAIL hides the design from the selector; NOTE is advisory.",
+    "BCA ERSS Submission (indicative)": "Indicative BCA submission route from depth. The QP confirms per project.",
+    "Source Project Ref": "Past project this design was taken from (pick from Projects sheet).",
+    "Source Drawing No(s).": "Drawing number(s) in the past project where this detail appears.",
+    "Source Report & Page": "Design report / calc and page where the design is justified.",
+    "Extracted By": "Person (or 'Cowork' + person) who entered the data.",
+    "Data Verified By": "Engineer who checked the row against the source documents.",
+    "Authority Approval Ref": "Approval / acceptance reference from PUB, LTA, BCA etc. for the source project.",
+    "Approved By (QP)": "QP who approved this design as a library standard.",
+    "Last Reviewed": "Date the design was last checked against current codes.",
+    "Next Review Due": "Last Reviewed + review interval (SG_Criteria).",
+    "Review Status": "Flags designs never reviewed or overdue for review.",
+    "Data Completeness": "Share of required fields filled. Should reach 100% before Status = Approved.",
+    "Selectable": "Y when Approved and no FAIL. Used by the selector.",
+    "Selector Key": "Internal lookup key for the selector.",
+}
+
+
+def where_of(group, h):
+    if h.startswith("Source") or h in ("Authority Approval Ref", "Authority Approval Date"):
+        return "Title block / report cover / authority approval letter or CORENET record"
+    return {"Identification": "Automatic", "Geometry & Members": "Drawing: typical section / plan dimensions",
+            "Reinforcement": "Drawing: reinforcement detail / bar schedule",
+            "Materials & Durability": "Drawing general notes; design report design basis",
+            "Design Results & Checks": "Design report / calc: results summary",
+            "Design Basis": "Design report: design basis, loads, soil parameters (SI report)",
+            "Quantities": "Calc / BQ take-off per unit", "Files": "Library design folder",
+            "Source, Approval & Review": "Title block, approval records, library review",
+            "Internal (selector)": "Automatic"}.get(group, "")
+
+
+dd = wb.create_sheet("Data_Dictionary")
+dd["A1"] = "Data Dictionary: what every field means, its unit, and where to find it in past drawings and reports"
+dd["A1"].font = f_title
+dd["A2"] = "Use this as the extraction guide when entering past project designs (by hand or with Cowork). Required = needed for Data Completeness."
+dd["A2"].font = f_sub
+DDH = [("Register", 22), ("Field", 36), ("Group", 22), ("Entry", 9), ("Unit", 9), ("Required", 8), ("Description", 70), ("Where to Find in Source", 50)]
+for c, (h, w) in enumerate(DDH, 1):
+    put(dd, f"{L(c)}4", h, f_hdr, fill_hdr["in"], al=wrap)
+    dd.column_dimensions[L(c)].width = w
+import re as _re
+r = 5
+for sh, idx, lab in REGS:
+    for (h, kind, w, ex) in REGCOLS[sh]:
+        g = group_of(h, kind, ex)
+        m = _re.search(r"\(([^()]*)\)\s*$", h)
+        unit = m.group(1) if m and any(u in m.group(1) for u in ("mm", "m", "kPa", "kN", "kg", "deg", "years", "m/s", "1:", "%")) else ""
+        row = [sh, h, g, "Formula" if "formula" in ex else "Input", unit, "Y" if h in REQ[sh] else "", DESC.get(h, ""), where_of(g, h)]
+        for c, v in enumerate(row, 1):
+            put(dd, f"{L(c)}{r}", v, f_body, al=topwrap if c >= 7 else None)
+        r += 1
+for sh, hdrs, g in (("Projects", [h for h, _ in PJH], "Source project"), ("Rebar_Schedule", [h for h, _, _ in RBH], "Reinforcement"),
+                    ("Revision_Log", [h for h, _ in RVH], "Revision")):
+    for h in hdrs:
+        for c, v in enumerate([sh, h, g, "Input", "", "", "", ""], 1):
+            put(dd, f"{L(c)}{r}", v, f_body)
+        r += 1
+t = Table(displayName="tblDictionary", ref=f"A4:H{r-1}")
+t.tableStyleInfo = TableStyleInfo(name="TableStyleLight1", showRowStripes=False)
+dd.add_table(t)
+dd.freeze_panes = "C5"
 
 # =============================================================== helpers over registers
 def rng(sheet, idx, h):
@@ -1196,6 +1563,11 @@ rows = [
     ("ERSS_Pit_Register", "Temporary ERSS for manholes, jacking / receiving pits and trenches (sheet pile cofferdam, shoring box, caisson, secant / CBP shaft, open cut). Key: type, pit plan size, depth, soil. Checks: base stability, BCA route."),
     ("Linkway_Register", "Covered linkways per LTA SDRE Rev I (Mar 2026) Ch.22 (CLW1-CLW5). Key: type, roof width, headroom, bay. Checks: headroom 2.4 / 5.7 m, width 2.4 / 3.6 m, wind 22 m/s, fixing pull-out 4.0 kN, C25/30."),
     ("Other_Register", "Railing, staircase, POB, USD, bus shelter, others."),
+    ("Projects", "Past projects the designs come from (one row each). Registers pick the Project Ref."),
+    ("Rebar_Schedule", "Bar marks per design per unit; totals are checked against each register's rebar quantity."),
+    ("Revision_Log", "What changed between revisions."),
+    ("Data_Dictionary", "Every field: meaning, unit, required or not, and where to find it in past drawings and reports. Use it as the extraction guide."),
+    ("Data quality", "Each row shows Data Completeness (required fields filled), Data Check (rebar vs schedule) and Review Status (review due every few years)."),
     ("SG_Criteria", "All Singapore criteria and folder paths used by the checks. Rows marked VERIFY must be confirmed against the current documents before go-live."),
     ("", ""),
     ("COLOUR LEGEND", None),
@@ -1225,5 +1597,13 @@ tabc = {"README": "1F3864", "Design_Selector": "C00000", "Tender_Pack": "C00000"
         "Coverage": "C00000", "CAD_Standard": "7030A0", "SG_Criteria": "BF8F00", "Lists": "7F7F7F"}
 for sh in wb.worksheets:
     sh.sheet_properties.tabColor = tabc.get(sh.title, "375623")
+ORDER = ["README", "Design_Selector", "Tender_Pack", "CAD_Export", "Coverage", "Data_Dictionary", "Projects",
+         "Drain_Register", "RW_Register", "Embedded_Wall_Register", "Manhole_Register", "ERSS_Pit_Register", "Linkway_Register",
+         "Other_Register", "Rebar_Schedule", "Revision_Log", "SG_Criteria", "CAD_Standard", "Lists"]
+wb._sheets = [wb[n] for n in ORDER] + [w for w in wb._sheets if w.title not in ORDER]
+tabc.update({"Data_Dictionary": "7030A0", "Projects": "2F5597", "Rebar_Schedule": "375623", "Revision_Log": "2F5597"})
+for sh in wb.worksheets:
+    sh.sheet_properties.tabColor = tabc.get(sh.title, "375623")
+wb.active = 0
 wb.save(OUT)
 print("saved")

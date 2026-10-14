@@ -1,0 +1,256 @@
+<title>Design Library Search</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: search bar across the top, result list left, the selected design's record right (stacked on phones). */
+:root{
+  --paper:#f3f5f7; --sheet:#ffffff; --ink:#18232f; --ink-2:#4b5a69; --rule:#d5dce3; --rule-2:#e9edf1;
+  --accent:#1d5a8c; --accent-soft:#e3edf6; --ok:#2f7a4a; --ok-soft:#dff0e5; --warn:#a35a00; --warn-soft:#fbecd6; --bad:#b03a2e; --bad-soft:#f8dedb;
+  --display:"Barlow Condensed","Arial Narrow",Arial,sans-serif; --body:"Barlow",Arial,sans-serif; --mono:"IBM Plex Mono",Consolas,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --paper:#111820; --sheet:#18212b; --ink:#e3e9ef; --ink-2:#9fadbb; --rule:#2c3946; --rule-2:#22303c;
+  --accent:#6fa8dc; --accent-soft:#1f3347; --ok:#6cc48d; --ok-soft:#1d3527; --warn:#e6a352; --warn-soft:#3a2c17; --bad:#ec8a7f; --bad-soft:#3e211e; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --paper:#111820; --sheet:#18212b; --ink:#e3e9ef; --ink-2:#9fadbb; --rule:#2c3946; --rule-2:#22303c;
+  --accent:#6fa8dc; --accent-soft:#1f3347; --ok:#6cc48d; --ok-soft:#1d3527; --warn:#e6a352; --warn-soft:#3a2c17; --bad:#ec8a7f; --bad-soft:#3e211e; color-scheme:dark}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+body{background:var(--paper);color:var(--ink);font-family:var(--body);font-size:15px;line-height:1.45}
+.wrap{max-width:1320px;margin:0 auto;padding-block:20px 48px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+header.top{display:flex;flex-wrap:wrap;gap:12px 24px;align-items:flex-end;justify-content:space-between;border-bottom:2px solid var(--ink);padding-bottom:12px}
+h1{font-family:var(--display);font-weight:700;font-size:2rem;line-height:1;margin:0;text-wrap:balance}
+.src{color:var(--ink-2);font-size:.88rem;margin-top:4px}
+.src b{color:var(--ink)}
+.load{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.btn{background:var(--accent);color:#fff;border:0;border-radius:3px;padding:8px 14px;font:inherit;font-weight:600;font-size:.9rem;cursor:pointer;display:inline-block}
+.btn.ghost{background:none;color:var(--accent);border:1px solid var(--accent)}
+.btn:focus-visible,input:focus-visible,select:focus-visible,button:focus-visible,label.btn:focus-within{outline:2px solid var(--accent);outline-offset:2px}
+.hint{font-size:.8rem;color:var(--ink-2)}
+.bar{display:grid;grid-template-columns:minmax(0,1fr) repeat(3,minmax(140px,190px));gap:10px;margin:16px 0}
+@media (max-width:860px){.bar{grid-template-columns:1fr 1fr}.bar .q{grid-column:1/-1}}
+.lbl{font-family:var(--display);font-weight:600;font-size:.78rem;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-2);display:block;margin-bottom:3px}
+input[type=search],select{width:100%;font:inherit;padding:9px 10px;border:1px solid var(--rule);border-radius:3px;background:var(--sheet);color:var(--ink)}
+input[type=search]{font-size:1.05rem}
+.layout{display:grid;grid-template-columns:minmax(280px,400px) minmax(0,1fr);gap:18px;align-items:start}
+@media (max-width:860px){.layout{grid-template-columns:minmax(0,1fr)}}
+.list{background:var(--sheet);border:1px solid var(--rule);border-radius:4px;max-height:calc(100vh - 210px);overflow:auto}
+@media (max-width:860px){.list{max-height:none}}
+.count{padding:8px 12px;font-size:.8rem;color:var(--ink-2);border-bottom:1px solid var(--rule)}
+.item{display:block;width:100%;text-align:left;background:none;border:0;border-bottom:1px solid var(--rule-2);padding:10px 12px;cursor:pointer;color:inherit;font:inherit}
+.item:hover{background:var(--paper)}
+.item[aria-current="true"]{background:var(--accent-soft);box-shadow:inset 3px 0 0 var(--accent)}
+.id{font-family:var(--mono);font-weight:500;font-size:.88rem;word-break:break-all}
+.item .d{font-size:.86rem;color:var(--ink-2);margin:2px 0 5px}
+.chips{display:flex;flex-wrap:wrap;gap:5px}
+.chip{font-family:var(--display);font-weight:600;font-size:.72rem;letter-spacing:.05em;text-transform:uppercase;padding:1px 7px;border-radius:9px;background:var(--rule-2);color:var(--ink-2)}
+.chip.Approved,.chip.OK{background:var(--ok-soft);color:var(--ok)}.chip.Checked,.chip.WIP,.chip.NOTE{background:var(--warn-soft);color:var(--warn)}
+.chip.Superseded,.chip.FAIL{background:var(--bad-soft);color:var(--bad)}.chip.reg{background:var(--accent-soft);color:var(--accent)}
+.detail{background:var(--sheet);border:1px solid var(--rule);border-radius:4px;min-width:0}
+.dh{padding:16px 18px;border-bottom:1.5px solid var(--ink);display:flex;flex-direction:column;gap:8px}
+.dh .id{font-size:1.15rem}
+.dh .desc{font-size:1.05rem;font-weight:500}
+.keys{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));border-bottom:1px solid var(--rule)}
+.keys>div{padding:9px 14px;border-right:1px solid var(--rule-2);min-width:0}
+.k{font-size:.68rem;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-2)}
+.v{font-family:var(--mono);font-size:.88rem;overflow-wrap:anywhere}
+.checks{display:flex;flex-direction:column;gap:5px;padding:12px 18px;border-bottom:1px solid var(--rule)}
+.ck{font-size:.86rem;padding:5px 9px;border-radius:3px}
+.ck.OK{background:var(--ok-soft);color:var(--ok)}.ck.NOTE{background:var(--warn-soft);color:var(--warn)}.ck.FAIL{background:var(--bad-soft);color:var(--bad)}.ck.INFO{background:var(--accent-soft);color:var(--accent)}
+.actions{display:flex;flex-wrap:wrap;gap:8px;padding:12px 18px;border-bottom:1px solid var(--rule)}
+section.grp{padding:12px 18px 14px;border-bottom:1px solid var(--rule-2)}
+h2{font-family:var(--display);font-weight:700;font-size:1.05rem;letter-spacing:.04em;text-transform:uppercase;margin:0 0 8px;color:var(--ink-2)}
+dl.fields{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:8px 18px;margin:0}
+dl.fields div{min-width:0}
+dl.fields dt{font-size:.74rem;color:var(--ink-2)}
+dl.fields dd{margin:0;font-family:var(--mono);font-size:.86rem;overflow-wrap:anywhere}
+.files{display:grid;gap:6px}
+.file{display:grid;grid-template-columns:140px minmax(0,1fr) auto;gap:10px;align-items:center;font-size:.86rem}
+@media (max-width:560px){.file{grid-template-columns:1fr auto}.file .k{grid-column:1/-1}}
+.file code{font-family:var(--mono);font-size:.78rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mini{border:1px solid var(--rule);background:var(--paper);color:var(--accent);font-size:.74rem;font-weight:600;padding:3px 8px;border-radius:3px;cursor:pointer}
+.na{color:var(--ink-2);font-family:var(--mono);font-size:.78rem}
+.scroll{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-size:.84rem}
+th,td{border-bottom:1px solid var(--rule-2);padding:5px 7px;text-align:left}
+th{font-family:var(--display);font-weight:600;font-size:.74rem;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-2);border-bottom:1.5px solid var(--ink);white-space:nowrap}
+td.n,th.n{text-align:right;font-family:var(--mono);font-variant-numeric:tabular-nums}
+tfoot td{font-weight:700;border-top:1.5px solid var(--ink);border-bottom:0}
+.link{background:none;border:0;color:var(--accent);font:inherit;font-family:var(--mono);font-size:.86rem;cursor:pointer;padding:0;text-decoration:underline;text-align:left;overflow-wrap:anywhere}
+.empty{padding:28px;text-align:center;color:var(--ink-2)}
+.toggle{display:flex;gap:6px;align-items:center;font-size:.84rem;color:var(--ink-2);padding:10px 18px}
+.toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--sheet);padding:8px 16px;border-radius:4px;font-weight:600;font-size:.9rem;opacity:0;pointer-events:none;transition:opacity .2s}
+.toast.show{opacity:1}
+@media (prefers-reduced-motion:reduce){.toast{transition:none}}
+.hidden-copy{position:absolute;left:-9999px}
+.drop{outline:3px dashed var(--accent);outline-offset:-6px}
+</style>
+
+<div class="wrap" id="app">
+  <header class="top">
+    <div>
+      <h1>Design Library Search</h1>
+      <div class="src" id="src"></div>
+    </div>
+    <div class="load">
+      <label class="btn" for="file">Open register (.xlsx)<input type="file" id="file" accept=".xlsx,.xlsm" hidden></label>
+      <span class="hint">Opens your Design_Library_Register.xlsx in this browser. The file is not uploaded.</span>
+    </div>
+  </header>
+
+  <div class="bar">
+    <div class="q"><label class="lbl" for="q">Search</label><input type="search" id="q" placeholder="e.g. box culvert 1500, CBP Old Alluvium, MH 001C, linkway 3.6, EX-P002" autocomplete="off"></div>
+    <div><label class="lbl" for="fReg">Register</label><select id="fReg"></select></div>
+    <div><label class="lbl" for="fSt">Status</label><select id="fSt">
+      <option value="all">All designs</option><option value="sel">Approved &amp; SG-compliant</option><option value="Approved">Approved</option>
+      <option value="pending">Checked / WIP</option><option value="Superseded">Superseded</option></select></div>
+    <div><label class="lbl" for="fAuth">Source authority</label><select id="fAuth"></select></div>
+  </div>
+
+  <div class="layout">
+    <div class="list" id="list" aria-label="Search results"></div>
+    <div class="detail" id="detail"></div>
+  </div>
+</div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script>
+let DB = /*DATA*/;
+const $=s=>document.querySelector(s);
+const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const LABEL={Drain_Register:"Drain",RW_Register:"RC wall",Embedded_Wall_Register:"Embedded wall",Manhole_Register:"Manhole",ERSS_Pit_Register:"ERSS pit",Linkway_Register:"Linkway",Other_Register:"Others"};
+const GROUPS=["Design Basis","Geometry & Members","Reinforcement","Materials & Durability","Design Results & Checks","Quantities","Source, Approval & Review"];
+const FILES=[["CAD detail","CAD Detail (.dwg)"],["Drawing PDF","Drawing (.pdf)"],["STAAD.Pro","STAAD.Pro (.std)"],["Calc sheet","Calc Sheet (.xlsx)"],["Calc report","Calc Report (.pdf)"]];
+const empty=v=>v===null||v===undefined||v===""||v==="-";
+const fmtv=v=>{ if(v instanceof Date) return v.toISOString().slice(0,10); if(typeof v==="number") return Number.isInteger(v)?String(v):String(+v.toFixed(3)); return String(v); };
+let selected=null, showEmpty=false;
+
+function prep(){
+  DB.all=[]; DB.byId={};
+  Object.entries(DB.reg).forEach(([sh,rows])=>rows.forEach(r=>{ r._sheet=sh; r._label=LABEL[sh]||sh.replace(/_Register$/,"");
+    const pj=(DB.projects||[]).find(p=>p["Project Ref"]===r["Source Project Ref"]);
+    r._hay=(Object.values(r).filter(v=>typeof v!=="object").join(" ")+" "+(pj?Object.values(pj).join(" "):"")).toLowerCase();
+    DB.all.push(r); DB.byId[r["Design ID"]]=r; }));
+  DB.groupOf={}; (DB.dict||[]).forEach(d=>{ (DB.groupOf[d.Register]=DB.groupOf[d.Register]||{})[d.Field]=d.Group; });
+  const regs=Object.keys(DB.reg);
+  $("#fReg").innerHTML=`<option value="all">All registers (${DB.all.length})</option>`+regs.map(s=>`<option value="${s}">${esc(LABEL[s]||s)} (${DB.reg[s].length})</option>`).join("");
+  const auths=[...new Set(DB.all.map(r=>r["Source Authority"]).filter(a=>a&&!/not in/i.test(a)))].sort();
+  $("#fAuth").innerHTML=`<option value="all">Any</option>`+auths.map(a=>`<option>${esc(a)}</option>`).join("");
+  $("#src").innerHTML=`Source: <b>${esc(DB.source)}</b> · ${DB.all.length} designs in ${regs.length} registers`;
+}
+function compl(r){const c=r["SG Compliance Check"]||""; return /FAIL/.test(c)?"FAIL":/NOTE/.test(c)?"NOTE":c?"OK":"";}
+function results(){
+  const q=$("#q").value.trim().toLowerCase().split(/\s+/).filter(Boolean), reg=$("#fReg").value, st=$("#fSt").value, au=$("#fAuth").value;
+  return DB.all.filter(r=>(reg==="all"||r._sheet===reg)&&(au==="all"||r["Source Authority"]===au)
+    &&(st==="all"||(st==="sel"?r.Selectable==="Y":st==="pending"?(r.Status==="Checked"||r.Status==="WIP"):r.Status===st))
+    &&q.every(t=>r._hay.includes(t)))
+   .sort((a,b)=>(b.Selectable==="Y")-(a.Selectable==="Y")||a._sheet.localeCompare(b._sheet)||String(a["Design ID"]).localeCompare(String(b["Design ID"])));
+}
+function renderList(){
+  const R=results();
+  if(selected&&!R.includes(selected)) selected=R[0]||null;
+  if(!selected) selected=R[0]||null;
+  $("#list").innerHTML=`<div class="count">${R.length} result${R.length===1?"":"s"}</div>`+(R.length?R.map(r=>{const c=compl(r);return `<button class="item" data-id="${esc(r["Design ID"])}" aria-current="${r===selected}">
+      <div class="id">${esc(r["Design ID"])}</div><div class="d">${esc(r.Description)}</div>
+      <div class="chips"><span class="chip reg">${esc(r._label)}</span><span class="chip ${esc(r.Status)}">${esc(r.Status)}</span>${c?`<span class="chip ${c}">SG ${c}</span>`:""}${r["Data Completeness"]!==undefined&&r["Data Completeness"]!==null?`<span class="chip">${Math.round(r["Data Completeness"]*100)}% data</span>`:""}</div></button>`;}).join("")
+    :`<div class="empty">No design matches. Try fewer words, or set Register and Status to All.</div>`);
+  renderDetail();
+}
+function checksHtml(r){
+  const out=[], c=r["SG Compliance Check"]||"";
+  if(c==="OK") out.push(["OK","Singapore checks: OK"]); else c.split(/(?=FAIL:|NOTE:)/).map(s=>s.trim()).filter(Boolean).forEach(s=>out.push([s.slice(0,4),s]));
+  if(r["BCA ERSS Submission (indicative)"]) out.push(["INFO",`BCA ERSS submission (indicative): ${r["BCA ERSS Submission (indicative)"]}`]);
+  [["Data Check (rebar vs schedule)","Rebar vs schedule"],["Review Status","Review"]].forEach(([h,lab])=>{const v=r[h]; if(v) out.push([/NOTE|FAIL/.test(v)?"NOTE":/No rebar/.test(v)?"INFO":"OK",`${lab}: ${v}`]);});
+  if(r.Selectable!=="Y") out.unshift(["FAIL",r.Status!=="Approved"?`Not for tender use: status is ${r.Status}.`:"Not for tender use: fails a Singapore check."]);
+  return out.map(([k,t])=>`<div class="ck ${k}">${esc(t)}</div>`).join("");
+}
+function fieldsHtml(r,group){
+  const gmap=DB.groupOf[r._sheet]||{};
+  const skip=new Set(["Design ID","Description","SG Compliance Check","BCA ERSS Submission (indicative)","Data Check (rebar vs schedule)","Review Status",...FILES.map(f=>f[1]),"Design Folder"]);
+  const keys=Object.keys(r).filter(h=>!h.startsWith("_")&&gmap[h]===group&&!skip.has(h)&&(showEmpty||!empty(r[h])));
+  if(!keys.length) return "";
+  return `<section class="grp"><h2>${esc(group)}</h2><dl class="fields">${keys.map(h=>{let v=empty(r[h])?"–":fmtv(r[h]);
+    if(h==="Data Completeness"&&typeof r[h]==="number") v=Math.round(r[h]*100)+"%";
+    const link=DB.byId[v]&&v!==r["Design ID"]?`<button class="link" data-go="${esc(v)}">${esc(v)}</button>`:esc(v);
+    return `<div><dt>${esc(h)}</dt><dd>${link}</dd></div>`;}).join("")}</dl></section>`;
+}
+function renderDetail(){
+  const r=selected;
+  if(!r){$("#detail").innerHTML=`<div class="empty">Search for a design, then pick it from the list to see its full record.</div>`;return;}
+  const keyv=[["Register",r._label],["Drawing no. / rev",`${fmtv(r["Drawing No."]??"–")} / ${fmtv(r.Rev??"–")}`],["Detail scale",r["Detail Scale (1:n)"]?`1:${r["Detail Scale (1:n)"]}`:"–"],
+    ["Qty unit",r["Qty Unit"]||"–"],["Approved by (QP)",r["Approved By (QP)"]||"–"],["Source project",r["Source Project Ref"]?`${r["Source Project Ref"]}`:"–"]];
+  const folder=r["Design Folder"]||"";
+  const files=FILES.map(([lab,h])=>{const n=r[h]; return `<div class="file"><span class="k">${lab}</span>${empty(n)||n==="n/a"?`<span class="na">not used</span><span></span>`:`<code title="${esc(folder+n)}">${esc(n)}</code><button class="mini" data-copy="${esc(folder+n)}">Copy path</button>`}</div>`;}).join("");
+  const rb=(DB.rebar||[]).filter(b=>b["Design ID"]===r["Design ID"]);
+  const rbHtml=rb.length?`<section class="grp"><h2>Rebar schedule (per ${esc(r["Qty Unit"]||"unit")})</h2><div class="scroll"><table><thead><tr><th>Mark</th><th>Location</th><th>Bar</th><th class="n">Spacing</th><th class="n">No.</th><th class="n">Length m</th><th>Shape</th><th class="n">kg</th></tr></thead><tbody>
+    ${rb.map(b=>`<tr><td>${esc(b["Bar Mark"])}</td><td>${esc(b.Location)}</td><td>${esc((b["Bar Type"]||"")+(b["Dia (mm)"]||""))}</td><td class="n">${esc(b["Spacing (mm)"]??"")}</td><td class="n">${esc(fmtv(b["No. Used"]??""))}</td><td class="n">${esc(b["Bar Length incl. Laps (m)"]??"")}</td><td>${esc(b["Shape Code (BS 8666)"]??"")}</td><td class="n">${esc(fmtv(b["Weight (kg/unit)"]??""))}</td></tr>`).join("")}</tbody>
+    <tfoot><tr><td colspan="7">Total</td><td class="n">${rb.reduce((s,b)=>s+(+b["Weight (kg/unit)"]||0),0).toFixed(1)}</td></tr></tfoot></table></div></section>`:"";
+  const rv=(DB.revisions||[]).filter(x=>x["Design ID (new rev)"]===r["Design ID"]||x["Superseded Design ID"]===r["Design ID"]);
+  const rvHtml=rv.length?`<section class="grp"><h2>Revision history</h2><div class="scroll"><table><thead><tr><th>Rev</th><th>Date</th><th>Change</th><th>Reason</th><th>By</th></tr></thead><tbody>
+    ${rv.map(x=>`<tr><td>${esc(x.Rev)}</td><td>${esc(fmtv(x.Date??""))}</td><td>${esc(x["Change Description"])}</td><td>${esc(x.Reason??"")}</td><td>${esc(x["Changed By"]??"")}</td></tr>`).join("")}</tbody></table></div></section>`:"";
+  const pj=(DB.projects||[]).find(p=>p["Project Ref"]===r["Source Project Ref"]);
+  const pjHtml=pj?`<section class="grp"><h2>Source project</h2><dl class="fields">${Object.entries(pj).filter(([k,v])=>!empty(v)).map(([k,v])=>`<div><dt>${esc(k)}</dt><dd>${esc(fmtv(v))}</dd></div>`).join("")}</dl></section>`:"";
+  $("#detail").innerHTML=`<div class="dh"><div class="chips"><span class="chip reg">${esc(r._label)}</span><span class="chip ${esc(r.Status)}">${esc(r.Status)}</span></div>
+      <div class="id">${esc(r["Design ID"])}</div><div class="desc">${esc(r.Description)}</div></div>
+    <div class="keys">${keyv.map(([k,v])=>`<div><div class="k">${k}</div><div class="v">${esc(v)}</div></div>`).join("")}</div>
+    <div class="checks">${checksHtml(r)}</div>
+    <div class="actions"><button class="btn" id="cpSum">Copy summary</button><button class="btn ghost" id="cpFiles">Copy all file paths</button><button class="btn ghost" id="cpId">Copy Design ID</button></div>
+    <section class="grp"><h2>Files</h2><div class="files">${files}</div><p class="hint" style="margin:8px 0 0">Folder: <span class="v">${esc(folder||"–")}</span></p></section>
+    ${GROUPS.map(g=>fieldsHtml(r,g)).join("")}${rbHtml}${rvHtml}${pjHtml}
+    <label class="toggle"><input type="checkbox" id="showEmpty" ${showEmpty?"checked":""}> Show empty fields</label>`;
+}
+function summary(r){
+  const gmap=DB.groupOf[r._sheet]||{}, lines=[`${r["Design ID"]}`,`${r.Description}`,`Status: ${r.Status}   Drawing: ${r["Drawing No."]||"-"} Rev ${r.Rev||"-"}   Scale 1:${r["Detail Scale (1:n)"]||"-"}`];
+  ["Geometry & Members","Reinforcement","Materials & Durability"].forEach(g=>{const ks=Object.keys(r).filter(h=>gmap[h]===g&&!empty(r[h])); if(ks.length) lines.push(`${g}: `+ks.map(h=>`${h} ${fmtv(r[h])}`).join("; "));});
+  lines.push(`SG check: ${r["SG Compliance Check"]||"-"}`, `Code basis: ${r["Code Basis"]||"-"}`, `Limitations: ${r["Limitations / Notes"]||"-"}`);
+  return lines.join("\n");
+}
+
+/* ---------- loading the user's Excel file ---------- */
+function readWorkbook(buf,name){
+  const wb=XLSX.read(buf,{type:"array",cellDates:true});
+  const rows=sh=>wb.Sheets[sh]?XLSX.utils.sheet_to_json(wb.Sheets[sh],{range:3,defval:null}):[];
+  const reg={};
+  wb.SheetNames.filter(n=>/_Register$/.test(n)).forEach(n=>{reg[n]=rows(n).filter(r=>r["Design ID"]);});
+  if(!Object.keys(reg).length) throw new Error("No sheets ending in _Register were found. Open Design_Library_Register.xlsx.");
+  const cached=Object.values(reg).flat().some(r=>r.Description);
+  DB={reg,dict:rows("Data_Dictionary").filter(d=>d.Field),projects:rows("Projects").filter(p=>p["Project Ref"]),
+      rebar:rows("Rebar_Schedule").filter(b=>b["Design ID"]),revisions:rows("Revision_Log").filter(x=>x["Design ID (new rev)"]),
+      source:`${name} (opened ${new Date().toLocaleString("en-SG")})`};
+  if(!cached) toast("Formula results are missing. Open the file in Excel, save it, then open it here again.");
+  prep(); selected=null; renderList();
+}
+function openFile(f){ if(!f) return; if(typeof XLSX==="undefined"){toast("The Excel reader could not load. Check your connection.");return;}
+  const rd=new FileReader(); rd.onload=e=>{try{readWorkbook(new Uint8Array(e.target.result),f.name);toast(`Opened ${f.name}`);}catch(err){toast(err.message);}}; rd.readAsArrayBuffer(f);}
+
+/* ---------- clipboard ---------- */
+function toast(m){const t=$("#toast");t.textContent=m;t.classList.add("show");clearTimeout(toast.h);toast.h=setTimeout(()=>t.classList.remove("show"),2600);}
+function copy(text,msg){const fb=()=>{const ta=document.createElement("textarea");ta.className="hidden-copy";ta.value=text;document.body.appendChild(ta);ta.select();
+  let ok=false;try{ok=document.execCommand("copy")}catch(e){} ta.remove(); toast(ok?msg:"Copy blocked here. Select the text and press Ctrl+C.");};
+  try{navigator.clipboard.writeText(text).then(()=>toast(msg),fb)}catch(e){fb()}}
+
+/* ---------- events ---------- */
+["#q","#fReg","#fSt","#fAuth"].forEach(s=>$(s).addEventListener("input",()=>{selected=null;renderList();}));
+$("#list").addEventListener("click",e=>{const b=e.target.closest("[data-id]");if(!b)return;selected=DB.byId[b.dataset.id];
+  try{history.replaceState(null,"","#"+b.dataset.id)}catch(_){}
+  $("#list").querySelectorAll(".item").forEach(x=>x.setAttribute("aria-current",x===b));renderDetail();
+  if(window.matchMedia("(max-width:860px)").matches) $("#detail").scrollIntoView({behavior:"smooth",block:"start"});});
+$("#detail").addEventListener("click",e=>{const r=selected;if(!r)return;
+  const c=e.target.closest("[data-copy]"); if(c) return copy(c.dataset.copy,"Path copied");
+  const g=e.target.closest("[data-go]"); if(g){selected=DB.byId[g.dataset.go];$("#q").value="";$("#fReg").value="all";$("#fSt").value="all";renderList();return;}
+  if(e.target.id==="cpSum") copy(summary(r),"Summary copied");
+  if(e.target.id==="cpId") copy(r["Design ID"],"Design ID copied");
+  if(e.target.id==="cpFiles"){const f=FILES.map(x=>r[x[1]]).filter(n=>!empty(n)&&n!=="n/a").map(n=>(r["Design Folder"]||"")+n);copy(f.join("\n"),`${f.length} file paths copied`);}});
+$("#detail").addEventListener("change",e=>{if(e.target.id==="showEmpty"){showEmpty=e.target.checked;renderDetail();}});
+$("#file").addEventListener("change",e=>openFile(e.target.files[0]));
+const app=$("#app");
+app.addEventListener("dragover",e=>{e.preventDefault();app.classList.add("drop");});
+app.addEventListener("dragleave",e=>{if(e.target===app)app.classList.remove("drop");});
+app.addEventListener("drop",e=>{e.preventDefault();app.classList.remove("drop");openFile(e.dataTransfer.files[0]);});
+
+prep();
+const h=decodeURIComponent(location.hash.slice(1)); if(h&&DB.byId[h]) selected=DB.byId[h];
+renderList();
+</script>
